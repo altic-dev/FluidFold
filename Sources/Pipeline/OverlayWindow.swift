@@ -10,7 +10,7 @@ final class OverlayWindow: NSWindow {
     init(renderer: FoldRenderer) {
         metalView = FoldMetalView(renderer: renderer)
         super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
-        level = .screenSaver
+        level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)   // above dictation HUDs (Wispr Flow sits at 1000); anything over us forces compositing
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = true
         backgroundColor = .black

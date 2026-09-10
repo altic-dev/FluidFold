@@ -55,7 +55,7 @@ final class EffectController: ObservableObject {
     private struct Reading { var t: Double; var frame: Double }
     private var track: [Reading] = []
     /// How far behind real time the playhead runs. Sensor cadence is 100 ms; polling adds up to 17 ms.
-    var delay: Double = UserDefaults.standard.double(forKey: "playheadDelayMs").nonZero.map { $0 / 1000 } ?? 0.115
+    var delay: Double = UserDefaults.standard.double(forKey: "playheadDelayMs").nonZero.map { $0 / 1000 } ?? 0.08
     /// If the next reading is late, keep moving at the last speed for at most this fraction of a cadence, then hold.
     var maxExtrapolation: Double = UserDefaults.standard.double(forKey: "maxExtrapolation").nonZero ?? 0.35
     private var lastRawReadingTime: Double = 0
