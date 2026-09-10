@@ -7,6 +7,7 @@ START_TIME=$(date +%s)
 APP_NAME="FluidFold"
 SCHEME="FluidFold"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_NUMBER="$(git -C "${PROJECT_DIR}" rev-list --count HEAD 2>/dev/null || echo 1)"
 CONFIGURATION="${CONFIGURATION:-Release}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${PROJECT_DIR}/build/DerivedData}"
 DESTINATION="${DESTINATION:-platform=macOS,arch=arm64}"
@@ -55,6 +56,7 @@ xcodebuild \
     -destination "${DESTINATION}" \
     -derivedDataPath "${DERIVED_DATA_PATH}" \
     "${XCCONFIG_ARGS[@]}" \
+    CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
     build 2>&1 | tee "${BUILD_LOG}" | grep -E "error:|warning: .*Sources|BUILD (SUCCEEDED|FAILED)" || true
 STATUS=${PIPESTATUS[0]}
 set -e

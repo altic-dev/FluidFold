@@ -7,6 +7,7 @@ set -euo pipefail
 APP_NAME="FluidFold"
 SCHEME="FluidFold"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_NUMBER="$(git -C "${PROJECT_DIR}" rev-list --count HEAD 2>/dev/null || echo 1)"
 BUILD_DIR="${PROJECT_DIR}/build/release"
 ARCHIVE_PATH="${BUILD_DIR}/${APP_NAME}.xcarchive"
 EXPORT_PATH="${BUILD_DIR}/Export"
@@ -31,7 +32,7 @@ rm -rf "${BUILD_DIR}"; mkdir -p "${BUILD_DIR}"
 xcodebuild archive \
     -project "${PROJECT_DIR}/${APP_NAME}.xcodeproj" -scheme "${SCHEME}" -configuration Release \
     -destination "generic/platform=macOS" -archivePath "${ARCHIVE_PATH}" \
-    ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+    ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
     CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="${DEVELOPER_ID}" DEVELOPMENT_TEAM="${TEAM_ID}" \
     2>&1 | grep -E "error:|warning: .*Sources|ARCHIVE (SUCCEEDED|FAILED)" || true
 [ -d "${ARCHIVE_PATH}" ] || { echo "❌ archive failed"; exit 1; }
@@ -68,6 +69,7 @@ fi
 echo "━━ dmg"
 STAGE="${BUILD_DIR}/dmg"; rm -rf "${STAGE}"; mkdir -p "${STAGE}"
 ditto "${APP_PATH}" "${STAGE}/${APP_NAME}.app"; ln -s /Applications "${STAGE}/Applications"
+cp "${PROJECT_DIR}/Resources/AppIcon.icns" "${STAGE}/.VolumeIcon.icns"; SetFile -a C "${STAGE}" 2>/dev/null || true
 hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGE}" -ov -format UDZO "${DMG}" >/dev/null
 if [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
     xcrun notarytool submit "${DMG}" --keychain-profile "${NOTARIZATION_PROFILE}" --wait 2>&1 | grep -E "status:" | tail -1

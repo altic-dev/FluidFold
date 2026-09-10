@@ -8,13 +8,11 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(nsImage: MenuBarIcon.image(angleDegrees: 62, paused: false))
+            Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .interpolation(.high)
-                .renderingMode(.template)
-                .foregroundStyle(FluidBrand.blue)
-                .frame(width: 70, height: 56)
-                .padding(.top, 30)
+                .frame(width: 84, height: 84)
+                .padding(.top, 22)
 
             Text("Let FluidFold see your screen")
                 .font(.system(size: 22, weight: .semibold))
