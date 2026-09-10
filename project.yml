@@ -24,6 +24,8 @@ targets:
       - path: Sources/Effect/Shaders
         type: folder
         buildPhase: resources
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
     entitlements:
       path: FluidFold.entitlements
       properties:
@@ -32,6 +34,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: FluidFold
+        CFBundleIconFile: AppIcon
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true
