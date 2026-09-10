@@ -597,13 +597,14 @@ final class EffectController: ObservableObject {
         ensureDisplayLink()
     }
 
-    /// Fully folded = last frame. Actions trigger there (not at the first frame), so a lid nudge does nothing.
+    /// Actions kick in once the fold is clearly under way (a few degrees past the threshold, so a lid nudge does
+    /// nothing) and are undone when the lid comes back toward the start angle, or when the fold hides.
     private func updateFoldedActions(frame: Int) {
-        let folded = frame >= timeline.frameCount - 1
-        if folded && !foldedActionsDone {
+        let engaged = frame >= min(60, timeline.frameCount / 4)         // 60 frames = 3° at 0.05°/frame
+        if engaged && !foldedActionsDone {
             foldedActionsDone = true
             if muteAudioWhileFolded { muter.mute() }
-        } else if !folded && foldedActionsDone && frame < timeline.frameCount / 2 {
+        } else if !engaged && foldedActionsDone && frame < 20 {
             foldedActionsDone = false
             muter.unmute()
         }

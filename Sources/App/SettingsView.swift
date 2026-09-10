@@ -63,7 +63,7 @@ struct GeneralPane: View {
             } header: {
                 Text("While folded")
             } footer: {
-                Text("Applies once the desktop is fully folded and is undone when you open the lid. A mute you set yourself is left alone.")
+                Text("Kicks in as soon as the fold starts and is undone when you open the lid. A mute you set yourself is left alone.")
             }
 
             Section {
