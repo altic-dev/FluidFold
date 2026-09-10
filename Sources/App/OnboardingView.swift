@@ -49,9 +49,7 @@ struct OnboardingView: View {
                 if permissions.screenRecording {
                     PillButton(title: "Done") { dismissWindow(id: "onboarding") }
                 } else {
-                    Button("Later") { dismissWindow(id: "onboarding") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                    GlassButton(title: "Later") { dismissWindow(id: "onboarding") }
                 }
             }
         }

@@ -91,7 +91,6 @@ struct PermissionRow: View {
     var style: Style = .plain
     var action: () -> Void = {}
 
-    @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var tint: Color { isReady ? .green : FluidBrand.blue }
@@ -99,13 +98,11 @@ struct PermissionRow: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(tint.opacity(isReady ? 0.16 : 0.12))
-                Image(systemName: isReady ? "checkmark" : systemImage)
-                    .font(.system(size: isReady ? 13 : 13, weight: .bold))
-                    .foregroundStyle(tint.opacity(0.95))
-            }
-            .frame(width: 34, height: 34)
+            Image(systemName: isReady ? "checkmark" : systemImage)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 34, height: 34)
+                .glassSurface(in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
@@ -135,57 +132,77 @@ struct PermissionRow: View {
         }
         .padding(.vertical, style == .card ? 14 : 4)
         .padding(.horizontal, style == .card ? 16 : 0)
-        .background {
-            if style == .card {
-                shape.fill(Color.primary.opacity(isReady ? 0.035 : 0.05))
-                    .overlay(shape.stroke(tint.opacity(isReady ? 0.20 : 0.28), lineWidth: 1))
-            }
-        }
+        .background { if style == .card { Color.clear.glassSurface(in: shape) } }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: isReady)
     }
 }
 
-/// Filled brand-blue capsule with FluidVoice's hover treatment (lift, glow, outer ring).
-/// A real ButtonStyle so hits are handled by SwiftUI, including inside Form rows.
+/// Primary action: native Liquid Glass on macOS 26+, a tinted capsule before that.
 struct PillButton: View {
     let title: String
     var systemImage: String? = nil
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 9.5, weight: .bold)) }
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-            }
+        let label = HStack(spacing: 6) {
+            if let systemImage { Image(systemName: systemImage).font(.system(size: 10, weight: .bold)) }
+            Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
         }
-        .buttonStyle(PillButtonStyle())
+        if #available(macOS 26.0, *) {
+            Button(action: action) { label.padding(.horizontal, 4) }
+                .buttonStyle(.glassProminent)
+                .tint(FluidBrand.blue)
+                .controlSize(.regular)
+        } else {
+            Button(action: action) { label }.buttonStyle(PillButtonStyle())
+        }
     }
 }
 
+/// Secondary action: clear glass on macOS 26+, bordered before that.
+struct GlassButton: View {
+    let title: String
+    var action: () -> Void
+
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            Button(title, action: action).buttonStyle(.glass).controlSize(.regular)
+        } else {
+            Button(title, action: action).buttonStyle(.bordered)
+        }
+    }
+}
+
+/// Fallback capsule for macOS 15.
 struct PillButtonStyle: ButtonStyle {
     @State private var hovered = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = Capsule()
-        let lifted = hovered && !configuration.isPressed
         configuration.label
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .frame(height: 28)
-            .background(
-                shape.fill(FluidBrand.blue.opacity(configuration.isPressed ? 0.8 : 1))
-                    .overlay(shape.fill(Color.white.opacity(lifted ? 0.10 : 0)))
-                    .overlay(shape.stroke(Color.white.opacity(lifted ? 0.30 : 0), lineWidth: 1))
-                    .overlay(shape.stroke(FluidBrand.blue.opacity(lifted ? 0.5 : 0), lineWidth: 1.4).padding(-2))
-                    .shadow(color: FluidBrand.blue.opacity(lifted ? 0.5 : 0.22), radius: lifted ? 12 : 6, y: lifted ? 4 : 2)
-            )
+            .background(shape.fill(FluidBrand.blue.opacity(configuration.isPressed ? 0.8 : hovered ? 0.92 : 1)))
             .contentShape(shape)
-            .onHover { h in
-                if reduceMotion { hovered = h } else { withAnimation(.easeOut(duration: 0.14)) { hovered = h } }
-            }
+            .onHover { hovered = $0 }
     }
+}
+
+/// Rounded surface: Liquid Glass on macOS 26+, a regular material before that.
+struct GlassSurface<S: Shape>: ViewModifier {
+    let shape: S
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content.background(.regularMaterial, in: shape)
+        }
+    }
+}
+
+extension View {
+    func glassSurface<S: Shape>(in shape: S) -> some View { modifier(GlassSurface(shape: shape)) }
 }
 
 enum Permissions {

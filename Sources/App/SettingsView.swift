@@ -27,10 +27,6 @@ struct GeneralPane: View {
 
     var body: some View {
         Form {
-            Section {
-                FoldPreviewCard(controller: controller, permissions: permissions)
-            }
-
             Section("Effect") {
                 Picker("Style", selection: $state.style) {
                     ForEach(FoldStyle.allCases) { Text($0.rawValue).tag($0) }
@@ -42,7 +38,7 @@ struct GeneralPane: View {
             }
 
             Section {
-                Toggle("Enabled", isOn: $controller.isEnabled)
+                Toggle("Enabled", isOn: $controller.isEnabled).toggleStyle(.switch)
                 LabeledContent("Start folding at") {
                     HStack(spacing: 12) {
                         Slider(value: $state.startAngle, in: 60...115, step: 1)
@@ -53,6 +49,7 @@ struct GeneralPane: View {
                     }
                 }
                 Toggle("Launch at login", isOn: Binding(get: { state.launchAtLogin }, set: { state.launchAtLogin = $0 }))
+                    .toggleStyle(.switch)
             } header: {
                 Text("Behavior")
             } footer: {
@@ -60,7 +57,7 @@ struct GeneralPane: View {
             }
 
             Section {
-                Toggle("Mute audio", isOn: $state.muteAudioWhileFolded)
+                Toggle("Mute audio", isOn: $state.muteAudioWhileFolded).toggleStyle(.switch)
             } header: {
                 Text("While folded")
             } footer: {
@@ -91,7 +88,26 @@ struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 800)
+        .scrollContentBackground(.hidden)
+        .background(.windowBackground)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            FoldPreviewCard(controller: controller, permissions: permissions)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .background(.windowBackground)
+        }
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Text("FluidFold \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
+                    .font(.caption).foregroundStyle(.tertiary)
+                Spacer()
+                GlassButton(title: "Quit FluidFold") { NSApp.terminate(nil) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.bar)
+        }
+        .frame(width: 460, height: 820)
     }
 }
 
@@ -122,7 +138,8 @@ struct FoldPreviewCard: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 22)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task(id: permissions.screenRecording) {
             if permissions.screenRecording { snapshot = await ScreenCapturer.snapshotImage() }
         }
