@@ -12,7 +12,7 @@ Nothing is recorded or uploaded. macOS 15.2+ (needs the rect screenshot API), Ap
 ```
 
 - Requires a full Xcode in `/Applications` (picked automatically) and `brew install xcodegen`.
-- Signing: `xcconfig/LocalSigning.xcconfig` (Apple Development, team TEAMID). Copy the
+- Signing: `xcconfig/LocalSigning.xcconfig` (Apple Development, your team). Copy the
   `.example` file to change identity.
 - Env knobs: `CONFIGURATION=Debug`, `INSTALL_APP=0`, `LAUNCH_APP=0`.
 - Release: `./build_and_notarize.sh` → universal (arm64 + x86_64) app signed with Developer ID, notarized and
