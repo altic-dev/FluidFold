@@ -39,20 +39,19 @@ final class EffectController: ObservableObject {
     // Playhead: the sensor publishes ~10 readings/s. Between readings the playhead glides linearly to the
     // target frame over one sensor interval, stepping through every frame in between, and stops exactly on it.
     private(set) var playhead: Double = 0
-    private var glideFrom: Double = 0
-    private var glideTo: Double = 0
-    private var glideStart: Double = 0
-    private var glideDuration: Double = 0.1
-    private var glideFromVelocity: Double = 0     // frames/s at glide start (continuity with the previous glide)
-    private var glideToVelocity: Double = 0       // estimated lid speed at the target, frames/s
-    private var playheadVelocity: Double = 0
-    private var lastTarget: Double = 0
-    private var lastVelocity: Double = 0
-    /// Fraction of a sensor interval to aim ahead of the latest reading while the lid keeps moving.
-    var leadFraction: Double = UserDefaults.standard.double(forKey: "leadFraction").nonZero ?? 0.8
-    /// Glide duration as a multiple of the sensor interval. >1 keeps the playhead moving when the next reading lands.
-    var glideFactor: Double = UserDefaults.standard.double(forKey: "glideFactor").nonZero ?? 1.5
-    private var readingInterval: Double = 0.1     // smoothed sensor cadence
+    // Delay line. The playhead plays the sensor readings `delay` seconds behind real time, linearly between
+    // readings, so its speed between two readings is exactly the lid's average speed over that interval. It can
+    // never pass a reading, never reverses unless the lid does, and stops exactly where the lid stopped.
+    private struct Reading { var t: Double; var frame: Double }
+    private var track: [Reading] = []
+    /// How far behind real time the playhead runs. Sensor cadence is 100 ms; polling adds up to 17 ms.
+    var delay: Double = UserDefaults.standard.double(forKey: "playheadDelayMs").nonZero.map { $0 / 1000 } ?? 0.115
+    /// If the next reading is late, keep moving at the last speed for at most this fraction of a cadence, then hold.
+    var maxExtrapolation: Double = UserDefaults.standard.double(forKey: "maxExtrapolation").nonZero ?? 0.35
+    private var lastRawReadingTime: Double = 0
+    private var lastSnappedTime: Double = 0
+    private var glideTo: Double = 0          // latest reading's frame (the point the playhead is heading to)
+    private var holdingBeyond = false        // extrapolated past the last reading and waiting
     private var shownFrame = -1
     private var lastSampleTime: Double = CACurrentMediaTime()
     private var displayLink: CADisplayLink?
@@ -322,23 +321,10 @@ final class EffectController: ObservableObject {
             let now = CACurrentMediaTime()
             lastAngleChangeAt = now
             angle = target
-            // Glide the playhead to the new reading's frame over about one sensor interval (+25%, so it is still
-            // moving when the next reading lands; readings arrive 100 or 117 ms apart because of 60 Hz polling).
-            let interval = min(max(now - lastSampleTime, 0.05), 0.2)
-            readingInterval = readingInterval * 0.7 + interval * 0.3
             let targetFrame = timeline.playhead(for: target)
             recorder.reading(now: now, angle: target, target: targetFrame)
-            // Lid speed from the last two readings (frames/s). 0 when a reading repeats: the lid has stopped.
-            let lidVelocity = (targetFrame - lastTarget) / readingInterval
-            let accelerating = abs(lidVelocity) > abs(lastVelocity) * 0.8 && lidVelocity * lastVelocity >= 0
-            lastTarget = targetFrame
-            lastVelocity = lidVelocity
-            // Lag reduction: while the lid keeps moving, aim half a sensor interval ahead of the reading (where the
-            // lid will be when the next reading lands), so the picture trails the lid by ~60 ms instead of ~125.
-            // When the lid slows or reverses, aim at the reading itself, so a stop lands exactly on the reading.
-            let lead = accelerating ? lidVelocity * readingInterval * leadFraction : 0
-            let aim = min(max(targetFrame + lead, 0), Double(timeline.frameCount))
-            glide(to: aim, endVelocity: accelerating ? lidVelocity : 0, duration: readingInterval * glideFactor, now: now)
+            appendReading(frame: targetFrame, at: now)
+            lastSampleTime = now
             lastSampleTime = now
             evaluate()
         }
@@ -385,7 +371,8 @@ final class EffectController: ObservableObject {
             if isShowing && !hideWhenSettled {
                 // Rewind to frame 0 first; frame 0 equals the live screen, so the hide is invisible.
                 hideWhenSettled = true
-                glide(to: 0, endVelocity: 0, duration: 0.15, now: CACurrentMediaTime())
+                if let last = track.last, last.frame > 0 { track.append(Reading(t: max(last.t + 0.1, CACurrentMediaTime() - delay + 0.05), frame: 0)) }
+                glideTo = 0
                 ensureDisplayLink()
             }
         }
@@ -399,37 +386,48 @@ final class EffectController: ObservableObject {
         }
     }
 
-    /// Cubic (Hermite) glide: position and speed are continuous across readings, it passes exactly through
-    /// each reading, and it is clamped between start and target so it never overshoots.
-    private func glide(to target: Double, endVelocity: Double, duration: Double, now: Double) {
-        // Start from where the current glide is *now*, not where it was at the last vsync.
-        if displayLink != nil {
-            let g = glidePosition(at: now)
-            playhead = g.position
-            playheadVelocity = g.velocity
+    /// Adds a reading to the delay line. Timestamps are snapped to the sensor's 100 ms cadence: we poll at 60 Hz,
+    /// so the same 100 ms sensor tick is seen 100 or 117 ms after the previous one; using poll times would make
+    /// alternate segments 17% faster or slower than the lid.
+    private func appendReading(frame: Double, at now: Double) {
+        var t = now
+        let gap = now - lastRawReadingTime
+        if lastSnappedTime > 0 && gap > 0.085 && gap < 0.135 {
+            t = lastSnappedTime + 0.1
+            if abs(t - now) > 0.04 { t = now }          // drifted: resync to the measured time
         }
-        glideFrom = playhead
-        glideFromVelocity = playheadVelocity
-        glideTo = target
-        // Only carry speed in the direction of travel; a reversal or a stop starts/ends at rest.
-        let dir = target - playhead
-        glideToVelocity = dir * endVelocity > 0 ? endVelocity : 0
-        if dir * glideFromVelocity < 0 { glideFromVelocity = 0 }
-        glideStart = now
-        glideDuration = duration
+        lastRawReadingTime = now
+        lastSnappedTime = t
+        if let last = track.last, t <= last.t { t = last.t + 0.001 }
+        // If we extrapolated past the last reading and held there, start the next segment from where we are.
+        if holdingBeyond, !track.isEmpty { track[track.count - 1].frame = playhead; holdingBeyond = false }
+        track.append(Reading(t: t, frame: frame))
+        if track.count > 64 { track.removeFirst(track.count - 64) }
+        glideTo = frame
         if isShowing { ensureDisplayLink() }
     }
 
-    private func glidePosition(at now: Double) -> (position: Double, velocity: Double, done: Bool) {
-        let T = max(glideDuration, 1e-3)
-        let s = min(max((now - glideStart) / T, 0), 1)
-        let s2 = s * s, s3 = s2 * s
-        let p0 = glideFrom, p1 = glideTo, m0 = glideFromVelocity * T, m1 = glideToVelocity * T
-        var p = (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1
-        let v = ((6 * s2 - 6 * s) * p0 + (3 * s2 - 4 * s + 1) * m0 + (-6 * s2 + 6 * s) * p1 + (3 * s2 - 2 * s) * m1) / T
-        p = min(max(p, min(p0, p1)), max(p0, p1))
-        // At the end, report the lid's speed (not 0) so the next glide continues at speed instead of restarting.
-        return (p, s >= 1 ? glideToVelocity : v, s >= 1)
+    /// Playhead position at wall-clock `now`, and whether it has come to rest (nothing more to play).
+    private func delayedPosition(at now: Double) -> (position: Double, atRest: Bool) {
+        guard let last = track.last else { return (playhead, true) }
+        let tau = now - delay
+        if track.count == 1 || tau <= track[0].t { return (track.count == 1 && tau >= last.t ? last.frame : track[0].frame, tau >= last.t) }
+        if tau >= last.t {
+            // No newer reading yet: continue at the last segment's speed briefly, then hold.
+            let prev = track[track.count - 2]
+            let segDur = max(last.t - prev.t, 0.001)
+            let v = (last.frame - prev.frame) / segDur
+            let over = min(tau - last.t, segDur * maxExtrapolation)
+            if over >= segDur * maxExtrapolation { holdingBeyond = over > 0 && v != 0 }
+            let p = last.frame + v * over
+            return (min(max(p, 0), Double(timeline.frameCount)), tau - last.t >= segDur * maxExtrapolation)
+        }
+        // Inside the recorded track: linear between the two readings around tau.
+        var i = track.count - 2
+        while i > 0 && track[i].t > tau { i -= 1 }
+        let a = track[i], b = track[i + 1]
+        let f = (tau - a.t) / max(b.t - a.t, 0.001)
+        return (a.frame + (b.frame - a.frame) * f, false)
     }
 
     private func ensureDisplayLink() {
@@ -488,25 +486,26 @@ final class EffectController: ObservableObject {
     @objc private func displayTick(_ link: CADisplayLink) {
         let now = CACurrentMediaTime()
         recorder.period = max(link.targetTimestamp - link.timestamp, 1.0 / 240)
-        let g = glidePosition(at: now)
-        playhead = g.position
-        playheadVelocity = g.velocity
+        let d = delayedPosition(at: now)
+        playhead = d.position
         recorder.tick(now: now, playhead: playhead, frame: Int(playhead.rounded()), target: glideTo)
         tickParity ^= 1
-        let skip = adaptiveEnabled && composited && tickParity == 1 && !g.done
+        let skip = adaptiveEnabled && composited && tickParity == 1 && !d.atRest
         if !skip { show(frame: Int(playhead.rounded()), now: now) }
-        if g.done {
-            if hideWhenSettled {
+        if d.atRest {
+            if hideWhenSettled && playhead < 0.5 {
                 hideWhenSettled = false
                 let opened = active && minAngleSeen < startAngle - 10
                 hideOverlay(playSound: opened)
                 return
             }
-            // Lid at rest (target speed 0): stop drawing. Still moving: keep the link so the next glide starts on time.
-            if glideToVelocity == 0 || now - glideStart > glideDuration + 0.25 {
-                stopDisplayLink()
-                scheduleSettled()
+            if hideWhenSettled {
+                // Lid is above the threshold but the track hasn't reached 0 yet (e.g. the last reading is old).
+                track.append(Reading(t: (track.last?.t ?? now) + 0.1, frame: 0)); holdingBeyond = false
+                return
             }
+            stopDisplayLink()
+            scheduleSettled()
         }
     }
 
@@ -565,10 +564,15 @@ final class EffectController: ObservableObject {
         // below the threshold is already several degrees in (fast close).
         let target = timeline.playhead(for: angle)
         playhead = 0
-        playheadVelocity = 0
-        lastTarget = playhead
-        lastVelocity = 0
-        glide(to: target, endVelocity: 0, duration: max(0.1, min(0.2, target * degreesPerFrame / 60)), now: foldStartTime)
+        holdingBeyond = false
+        // The reading that crossed the threshold is already in the track. Seed a frame-0 reading one cadence
+        // before it so the playhead starts flat (identical to the live screen) and moves at the lid's own speed.
+        if let last = track.last {
+            track = [Reading(t: last.t - 0.1, frame: 0), last]
+        } else {
+            track = [Reading(t: foldStartTime - 0.1, frame: 0), Reading(t: foldStartTime, frame: target)]
+        }
+        glideTo = target
         show(frame: Int(playhead.rounded()), now: foldStartTime, force: true)
         // Freeze: capture frames are ignored from now on. Stopping the stream (or taking keyboard focus) while
         // the lid moves stutters the fold, so both happen in `settled()`, once the lid is still.
@@ -588,9 +592,8 @@ final class EffectController: ObservableObject {
         isShowing = false
         shownFrame = -1
         playhead = 0
-        playheadVelocity = 0
-        lastTarget = 0
-        lastVelocity = 0
+        track.removeAll()
+        holdingBeyond = false
         hideWhenSettled = false
         stopDisplayLink()
         overlay.hide()

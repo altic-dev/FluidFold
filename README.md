@@ -35,12 +35,13 @@ forward and rewind are identical. Frames are computed on demand (~2.5 ms on the 
 | `degreesPerFrame` | 0.05° | Timeline resolution. A=95°, B=25° gives 1400 frames |
 | Tracker deadband | 0.2° | Resting sensor jitter never moves the playhead |
 
-**Playhead.** The hinge sensor publishes ~10 readings/s. Between readings the playhead follows a cubic glide
-(continuous speed, no overshoot). While the lid keeps moving it aims 0.8 of a sensor interval *ahead* of the
-latest reading (`leadFraction`), which takes most of the sensor lag out; as soon as the lid slows or reverses it
-aims at the reading itself, so a stop lands exactly on it. Each glide lasts 1.5 sensor intervals (`glideFactor`)
-so the playhead is still moving when the next reading lands. A frame is drawn only when the frame number
-changes, paced by a display link (120 Hz on ProMotion).
+**Playhead.** The hinge sensor publishes ~10 readings/s. The playhead is a delay line: it plays the readings
+`playheadDelayMs` (115 ms) behind real time, linearly between readings, with timestamps snapped to the sensor's
+100 ms cadence (60 Hz polling would otherwise make alternate segments 17% faster or slower). So its speed between
+two readings is exactly the lid's average speed over that interval, it can never pass a reading, it never
+reverses unless the lid does, and it stops exactly where the lid stopped. If the next reading is late it keeps
+the last speed for at most `maxExtrapolation` (0.35) of a cadence, then holds. A frame is drawn only when the
+frame number changes, paced by a display link (120 Hz on ProMotion).
 
 **Snapshot, not a stream.** The desktop is captured with the rect-based `SCScreenshotManager.captureImage(in:)`
 (~40 ms, full Retina) while the lid moves in the pre-warm zone (10° above A), refreshed every 250 ms, and once
