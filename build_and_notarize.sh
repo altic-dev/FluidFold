@@ -1,0 +1,76 @@
+#!/bin/bash
+# Duofy release build: universal archive, Developer ID signing, notarization, stapling, DMG.
+# Usage: ./build_and_notarize.sh            (env: SKIP_NOTARIZE=1 to only sign)
+# Prereq (once): xcrun notarytool store-credentials notarize --apple-id <id> --team-id TEAMID
+set -euo pipefail
+
+APP_NAME="Duofy"
+SCHEME="Duofy"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_DIR="${PROJECT_DIR}/build/release"
+ARCHIVE_PATH="${BUILD_DIR}/${APP_NAME}.xcarchive"
+EXPORT_PATH="${BUILD_DIR}/Export"
+APP_PATH="${EXPORT_PATH}/${APP_NAME}.app"
+DEVELOPER_ID="${DEVELOPER_ID:-Developer ID Application: Your Name (TEAMID)}"
+TEAM_ID="${TEAM_ID:-TEAMID}"
+NOTARIZATION_PROFILE="${NOTARIZATION_PROFILE:-notarize}"
+
+if [ -z "${DEVELOPER_DIR:-}" ] && [[ "$(xcode-select -p)" != *"/Contents/Developer" ]]; then
+    export DEVELOPER_DIR="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+fi
+command -v xcodegen >/dev/null || { echo "❌ brew install xcodegen"; exit 1; }
+(cd "${PROJECT_DIR}" && xcodegen generate --quiet)
+
+# shellcheck source=scripts/ensure_codesign_keychain.sh
+source "${PROJECT_DIR}/scripts/ensure_codesign_keychain.sh"
+SIGNING_IDENTITY="Developer ID Application" ensure_codesign_keychain || exit 1
+
+VERSION="$(defaults read "${PROJECT_DIR}/Info.plist" CFBundleShortVersionString 2>/dev/null || /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PROJECT_DIR}/Info.plist")"
+echo "━━ ${APP_NAME} ${VERSION}: archive (universal, Developer ID)"
+rm -rf "${BUILD_DIR}"; mkdir -p "${BUILD_DIR}"
+xcodebuild archive \
+    -project "${PROJECT_DIR}/${APP_NAME}.xcodeproj" -scheme "${SCHEME}" -configuration Release \
+    -destination "generic/platform=macOS" -archivePath "${ARCHIVE_PATH}" \
+    ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+    CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="${DEVELOPER_ID}" DEVELOPMENT_TEAM="${TEAM_ID}" \
+    2>&1 | grep -E "error:|warning: .*Sources|ARCHIVE (SUCCEEDED|FAILED)" || true
+[ -d "${ARCHIVE_PATH}" ] || { echo "❌ archive failed"; exit 1; }
+
+cat > "${BUILD_DIR}/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>method</key><string>developer-id</string>
+    <key>teamID</key><string>${TEAM_ID}</string>
+    <key>signingStyle</key><string>manual</string>
+    <key>signingCertificate</key><string>Developer ID Application</string>
+</dict></plist>
+PLIST
+xcodebuild -exportArchive -archivePath "${ARCHIVE_PATH}" -exportPath "${EXPORT_PATH}" \
+    -exportOptionsPlist "${BUILD_DIR}/ExportOptions.plist" 2>&1 | grep -E "error:|EXPORT (SUCCEEDED|FAILED)" || true
+[ -d "${APP_PATH}" ] || { echo "❌ export failed"; exit 1; }
+
+echo "━━ verify"
+lipo -archs "${APP_PATH}/Contents/MacOS/${APP_NAME}"
+codesign --verify --deep --strict --verbose=2 "${APP_PATH}" 2>&1 | tail -2
+codesign -dv "${APP_PATH}" 2>&1 | grep -E "Authority=Developer ID|TeamIdentifier|Runtime"
+
+DMG="${BUILD_DIR}/${APP_NAME}-${VERSION}.dmg"
+if [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
+    echo "━━ notarize"
+    ZIP="${BUILD_DIR}/${APP_NAME}.zip"
+    ditto -c -k --keepParent "${APP_PATH}" "${ZIP}"
+    xcrun notarytool submit "${ZIP}" --keychain-profile "${NOTARIZATION_PROFILE}" --wait 2>&1 | tail -4
+    xcrun stapler staple "${APP_PATH}" | tail -1
+    spctl --assess --type execute --verbose=2 "${APP_PATH}" 2>&1 | tail -1
+fi
+
+echo "━━ dmg"
+STAGE="${BUILD_DIR}/dmg"; rm -rf "${STAGE}"; mkdir -p "${STAGE}"
+ditto "${APP_PATH}" "${STAGE}/${APP_NAME}.app"; ln -s /Applications "${STAGE}/Applications"
+hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGE}" -ov -format UDZO "${DMG}" >/dev/null
+if [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
+    xcrun notarytool submit "${DMG}" --keychain-profile "${NOTARIZATION_PROFILE}" --wait 2>&1 | grep -E "status:" | tail -1
+    xcrun stapler staple "${DMG}" | tail -1
+fi
+echo "✅ ${DMG}"
