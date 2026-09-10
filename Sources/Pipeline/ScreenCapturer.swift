@@ -51,7 +51,6 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Rect-based one-shot screenshot (macOS 15.2+). Experiment: may avoid the ~0.8 s capture-session wind-down.
     static func snapshotImage() async -> CGImage? {
-        guard #available(macOS 15.2, *) else { return nil }
         let id = builtInDisplayID()
         let bounds = CGDisplayBounds(id)
         return try? await SCScreenshotManager.captureImage(in: bounds)

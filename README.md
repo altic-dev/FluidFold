@@ -3,7 +3,7 @@
 Lightweight macOS menu bar app that animates your desktop as the MacBook lid closes
 (a recreation of [Bendy](https://trybendy.app)). Reads the hinge angle from the built-in
 sensor, captures the screen with ScreenCaptureKit, and renders a perspective fold with Metal.
-Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
+Nothing is recorded or uploaded. macOS 15.2+ (needs the rect screenshot API), Apple Silicon, a MacBook with the hinge-angle sensor (2019 and later).
 
 ## Build & run
 
