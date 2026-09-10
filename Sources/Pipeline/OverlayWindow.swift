@@ -10,7 +10,7 @@ final class OverlayWindow: NSWindow {
     init(renderer: FoldRenderer) {
         metalView = FoldMetalView(renderer: renderer)
         super.init(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
-        level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+        level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = true
         backgroundColor = .black
@@ -18,7 +18,12 @@ final class OverlayWindow: NSWindow {
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
         acceptsMouseMovedEvents = false
-        contentView = metalView
+        if UserDefaults.standard.bool(forKey: "debugPlainView") {
+            let v = NSView(); v.wantsLayer = true; v.layer?.backgroundColor = NSColor.red.cgColor
+            contentView = v
+        } else {
+            contentView = metalView
+        }
     }
 
     override var canBecomeKey: Bool { true }
@@ -36,10 +41,11 @@ final class OverlayWindow: NSWindow {
 
     func show() {
         guard let screen = Self.builtInScreen() else { return }
-        setFrame(screen.frame, display: true)
+        var f = screen.frame; if UserDefaults.standard.bool(forKey: "debugHalf") { f.size.width /= 2 }
+        setFrame(f, display: true)
         makeKeyAndOrderFront(nil)
-        dlog("overlay show frame=\(frame) view=\(metalView.frame) layer=\(String(describing: metalView.layer)) err=\(metalView.renderer.shaderError ?? "none")")
-        metalView.needsDisplay = true
+        dlog("overlay show frame=\(frame) view=\(metalView.frame) err=\(metalView.renderer.shaderError ?? "none")")
+        metalView.requestRender()
     }
 
     func hide() { orderOut(nil) }

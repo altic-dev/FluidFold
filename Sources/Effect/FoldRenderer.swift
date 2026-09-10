@@ -1,13 +1,15 @@
 import Foundation
 import Metal
 import MetalKit
+import QuartzCore
+import AppKit
 import CoreVideo
 import ImageIO
 
 /// Self-contained Metal renderer for the fold effect.
 /// Inputs: a source texture (`setSource`), `params`, `progress`. Output: draws into any MTKView.
 /// Nothing here knows about lids, sensors, or screen capture.
-final class FoldRenderer: NSObject, MTKViewDelegate {
+final class FoldRenderer: NSObject {
     let device: MTLDevice
     var params: FoldParams = .silk
     var progress: Double = 0
@@ -17,6 +19,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var pipeline: MTLRenderPipelineState?
     private var mipTexture: MTLTexture?
     private var pendingSource: MTLTexture?
+    private var pendingRetain: [Any] = []   // keeps CVPixelBuffer/CVMetalTexture alive until the GPU copy finishes
     private var textureCache: CVMetalTextureCache?
     private let startTime = CACurrentMediaTime()
     private var shaderWatcher: DispatchSourceFileSystemObject?
@@ -112,6 +115,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil, .bgra8Unorm, w, h, 0, &cvTex)
         if let cvTex, let tex = CVMetalTextureGetTexture(cvTex) {
             pendingSource = tex
+            pendingRetain = [pixelBuffer, cvTex]
         }
     }
 
@@ -130,19 +134,23 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         return t
     }
 
-    // MARK: MTKViewDelegate
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    // MARK: Rendering
 
     var debugLog = false
-    func draw(in view: MTKView) {
-        if debugLog { dlog("draw size=\(view.drawableSize) drawable=\(view.currentDrawable != nil) pipeline=\(pipeline != nil) tex=\(mipTexture != nil) pending=\(pendingSource != nil) p=\(progress)") }
-        guard let drawable = view.currentDrawable,
-              let pass = view.currentRenderPassDescriptor,
+    func render(into layer: CAMetalLayer) {
+        guard layer.drawableSize.width > 0, let drawable = layer.nextDrawable(),
               let cmd = queue.makeCommandBuffer() else { return }
+        if debugLog { dlog("draw size=\(layer.drawableSize) pipeline=\(pipeline != nil) tex=\(mipTexture != nil) pending=\(pendingSource != nil) p=\(progress)") }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = drawable.texture
+        pass.colorAttachments[0].storeAction = .store
+        let drawableSize = layer.drawableSize
 
         if let src = pendingSource {
             pendingSource = nil
+            let retain = pendingRetain
+            pendingRetain = []
+            cmd.addCompletedHandler { _ in _ = retain }
             let mip = ensureMipTexture(like: src)
             if let blit = cmd.makeBlitCommandEncoder() {
                 blit.copy(from: src, sourceSlice: 0, sourceLevel: 0, sourceOrigin: .init(), sourceSize: .init(width: src.width, height: src.height, depth: 1),
@@ -153,11 +161,12 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         }
 
         pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        let clearOnly = UserDefaults.standard.bool(forKey: "debugClearOnly")
+        pass.colorAttachments[0].clearColor = clearOnly ? MTLClearColor(red: 1, green: 0, blue: 0, alpha: 1) : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         if let enc = cmd.makeRenderCommandEncoder(descriptor: pass) {
-            if let pipeline, let tex = mipTexture {
+            if !clearOnly, let pipeline, let tex = mipTexture {
                 var u = params.uniforms(progress: progress,
-                                        aspect: Double(view.drawableSize.width / max(view.drawableSize.height, 1)),
+                                        aspect: Double(drawableSize.width / max(drawableSize.height, 1)),
                                         time: CACurrentMediaTime() - startTime)
                 enc.setRenderPipelineState(pipeline)
                 enc.setVertexBytes(&u, length: MemoryLayout<FoldParams.Uniforms>.stride, index: 0)
@@ -209,18 +218,56 @@ extension Notification.Name {
     static let foldShaderReloaded = Notification.Name("FoldShaderReloaded")
 }
 
-/// Drop-in view: give it a renderer, call `setNeedsDisplay()` when progress/params/source change.
-final class FoldMetalView: MTKView {
+/// Drop-in view backed by a CAMetalLayer. Call `requestRender()` whenever progress/params/source change.
+final class FoldMetalView: NSView {
     let renderer: FoldRenderer
+    private var renderScheduled = false
+
     init(renderer: FoldRenderer) {
         self.renderer = renderer
-        super.init(frame: .zero, device: renderer.device)
-        delegate = renderer
-        colorPixelFormat = .bgra8Unorm
-        isPaused = true
-        enableSetNeedsDisplay = true
-        framebufferOnly = renderer.debugDumpDir == nil
-        layer?.backgroundColor = .black
+        super.init(frame: .zero)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .duringViewResize
     }
-    required init(coder: NSCoder) { fatalError() }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func makeBackingLayer() -> CALayer {
+        let l = CAMetalLayer()
+        l.device = renderer.device
+        l.pixelFormat = .bgra8Unorm
+        l.isOpaque = true
+        l.backgroundColor = CGColor(gray: 0, alpha: 1)
+        l.framebufferOnly = renderer.debugDumpDir == nil
+        return l
+    }
+
+    var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
+
+    override func layout() {
+        super.layout()
+        updateDrawableSize()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateDrawableSize()
+    }
+
+    private func updateDrawableSize() {
+        let scale = window?.backingScaleFactor ?? 2
+        metalLayer.contentsScale = scale
+        metalLayer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        requestRender()
+    }
+
+    /// Coalesces multiple requests per runloop turn into one render.
+    func requestRender() {
+        guard !renderScheduled else { return }
+        renderScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.renderScheduled = false
+            self.renderer.render(into: self.metalLayer)
+        }
+    }
 }

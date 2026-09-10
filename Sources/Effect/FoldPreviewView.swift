@@ -11,7 +11,7 @@ struct FoldPreviewView: NSViewRepresentable {
     func makeNSView(context: Context) -> FoldMetalView {
         let v = FoldMetalView(renderer: renderer)
         context.coordinator.observer = NotificationCenter.default.addObserver(forName: .foldShaderReloaded, object: nil, queue: .main) { [weak v] _ in
-            v?.needsDisplay = true
+            v?.requestRender()
         }
         return v
     }
@@ -26,7 +26,7 @@ struct FoldPreviewView: NSViewRepresentable {
         }
         renderer.params = params
         renderer.progress = progress
-        view.needsDisplay = true
+        view.requestRender()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }

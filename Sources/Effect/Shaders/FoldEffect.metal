@@ -45,7 +45,15 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
                               texture2d<float> tex [[texture(0)]],
                               constant FoldUniforms &u [[buffer(0)]]) {
     constexpr sampler s(filter::linear, mip_filter::linear, address::clamp_to_edge);
-    float3 col = tex.sample(s, in.uv, level(u.blurLod)).rgb;
+    // Blur: coarse mip level + 9-tap kernel spread in texel units of that level. Cheap and smooth.
+    float lod = u.blurLod;
+    float2 texel = float2(1.0 / tex.get_width(), 1.0 / tex.get_height()) * exp2(lod) * 1.5;
+    float3 col = tex.sample(s, in.uv, level(lod)).rgb * 0.2;
+    const float2 taps[8] = { float2(1,0), float2(-1,0), float2(0,1), float2(0,-1),
+                             float2(0.7,0.7), float2(-0.7,0.7), float2(0.7,-0.7), float2(-0.7,-0.7) };
+    for (int i = 0; i < 8; i++) {
+        col += tex.sample(s, in.uv + taps[i] * texel, level(lod)).rgb * 0.1;
+    }
 
     // Shade: darken toward the edge that moves away from the viewer.
     float far = smoothstep(0.0, 1.0, mix(1.0 - in.uv.y, in.uv.y, u.hinge));

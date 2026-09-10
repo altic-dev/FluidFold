@@ -6,7 +6,7 @@ import simd
 struct FoldParams: Codable, Equatable {
     var maxTiltDegrees: Double = 68      // tilt of the panel at progress 1
     var perspective: Double = 0.45       // 0 = flat, 1 = extreme
-    var blur: Double = 0.6               // 0..1 scale of max mip level
+    var blur: Double = 0.8               // 0..1 scale of max mip level
     var shadow: Double = 0.6             // 0..1
     var frost: Double = 0                // 0..1
     var sheen: Double = 0.4              // 0..1
@@ -14,11 +14,11 @@ struct FoldParams: Codable, Equatable {
     var shrink: Double = 0.06            // 0..1, panel shrink at progress 1
     var drop: Double = 0.08              // 0..1, panel drop at progress 1
     var easing: Double = 1.4             // progress exponent (1 = linear)
-    var maxBlurLod: Double = 5           // mip levels at blur 1
+    var maxBlurLod: Double = 6           // mip levels at blur 1
     var hinge: Double = 0                // pivot edge: 0 = bottom (MacBook lid), 1 = top
 
     static let silk = FoldParams()
-    static let shade = FoldParams(maxTiltDegrees: 60, perspective: 0.35, blur: 0.3, shadow: 0.9, frost: 0, sheen: 0.1, vignette: 0.5)
+    static let shade = FoldParams(maxTiltDegrees: 60, perspective: 0.35, blur: 0.5, shadow: 0.9, frost: 0, sheen: 0.1, vignette: 0.5)
     static let frost = FoldParams(maxTiltDegrees: 55, perspective: 0.4, blur: 1.0, shadow: 0.3, frost: 0.35, sheen: 0, vignette: 0.15)
 
     /// Must match the Metal struct layout (14 floats, 56 bytes).

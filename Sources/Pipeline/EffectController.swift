@@ -37,7 +37,7 @@ final class EffectController: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.isShowing else { return }
                 self.renderer.setSource(pixelBuffer: pb)
-                self.overlay.metalView.needsDisplay = true
+                self.overlay.metalView.requestRender()
             }
         }
         if let a = sensor.readAngle() { angle = a }
@@ -85,7 +85,7 @@ final class EffectController: ObservableObject {
             if !isShowing { showOverlay() }
             minAngleSeen = min(minAngleSeen, a)
             renderer.progress = progress(for: a)
-            overlay.metalView.needsDisplay = true
+            overlay.metalView.requestRender()
         } else if isShowing {
             let opened = a >= startAngle && minAngleSeen < startAngle - 10
             hideOverlay(playSound: opened)
@@ -100,7 +100,7 @@ final class EffectController: ObservableObject {
         renderer.clearSource()
         renderer.progress = progress(for: angle)
         overlay.show()
-        Task { await capturer.start() }
+        if !UserDefaults.standard.bool(forKey: "debugClearOnly") { Task { await capturer.start() } }
     }
 
     private func hideOverlay(playSound: Bool) {
