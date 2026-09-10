@@ -110,7 +110,7 @@ struct GeneralPane: View {
             .padding(.vertical, 12)
             .background(.bar)
         }
-        .frame(width: 460, height: 820)
+        .frame(width: 460, height: 700)
     }
 }
 

@@ -39,7 +39,7 @@ targets:
       properties:
         CFBundleDisplayName: FluidFold
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: "1.0.0"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.utilities
         LSUIElement: true

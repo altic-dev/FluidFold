@@ -13,9 +13,18 @@ final class AppState: ObservableObject {
 
     @AppStorage("style") var styleRaw: String = FoldStyle.silk.rawValue { didSet { applyParams() } }
     @AppStorage("customParams") private var customParamsJSON: String = ""
-    @AppStorage("startAngle") var startAngle: Double = 95 { didSet { controller.startAngle = startAngle } }
-    @AppStorage("endAngle") var endAngle: Double = 25 { didSet { controller.endAngle = endAngle } }
-    @AppStorage("muteAudioWhileFolded") var muteAudioWhileFolded: Bool = false { didSet { controller.muteAudioWhileFolded = muteAudioWhileFolded } }
+    @AppStorage("startAngle") var startAngle: Double = 95 {
+        willSet { objectWillChange.send() }
+        didSet { controller.startAngle = startAngle }
+    }
+    @AppStorage("endAngle") var endAngle: Double = 25 {
+        willSet { objectWillChange.send() }
+        didSet { controller.endAngle = endAngle }
+    }
+    @AppStorage("muteAudioWhileFolded") var muteAudioWhileFolded: Bool = false {
+        willSet { objectWillChange.send() }
+        didSet { controller.muteAudioWhileFolded = muteAudioWhileFolded }
+    }
 
     /// The params actually rendered. Starts from the style preset; Tuning edits persist as custom.
     @Published var params: FoldParams = .silk { didSet { persistParams() } }
@@ -37,9 +46,6 @@ final class AppState: ObservableObject {
     init() {
         controller = EffectController(renderer: renderer)
         if UserDefaults.standard.bool(forKey: "trackingTrace") { TrackingTrace.shared.start() }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.trace"), object: nil, queue: .main) { _ in
-            TrackingTrace.shared.start()
-        }
         if let data = customParamsJSON.data(using: .utf8), let p = try? JSONDecoder().decode(FoldParams.self, from: data) {
             params = p
         } else {
@@ -49,9 +55,16 @@ final class AppState: ObservableObject {
         controller.endAngle = endAngle
         controller.muteAudioWhileFolded = muteAudioWhileFolded
         renderer.params = params
-        // Dev hook: starts the sensor-driven live preview.
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.preview"), object: nil, queue: .main) { [weak self] _ in
-            self?.controller.beginLivePreview()
+        if DevHooks.enabled {
+            DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.trace"), object: nil, queue: .main) { _ in
+                TrackingTrace.shared.start()
+            }
+            DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.preview"), object: nil, queue: .main) { [weak self] _ in
+                self?.controller.beginLivePreview()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.controller.prepareForTermination()
         }
     }
 

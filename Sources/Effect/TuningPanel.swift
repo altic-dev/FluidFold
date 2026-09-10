@@ -25,6 +25,7 @@ struct TuningPanel: View {
                 slider("Ramp °", $params.rampDegrees, 0...40)
                 slider("Hinge (0=bottom)", $params.hinge, 0...1)
                 slider("Max taps", $params.maxTaps, 6...64)
+                slider("Corner radius pt", $params.cornerRadius, 0...40)
             }
             Section("Cosmetics") {
                 slider("Frost", $params.frost, 0...1)

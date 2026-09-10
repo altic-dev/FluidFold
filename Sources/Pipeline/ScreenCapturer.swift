@@ -15,11 +15,12 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     static func hasPermission() -> Bool { CGPreflightScreenCaptureAccess() }
     static func requestPermission() { CGRequestScreenCaptureAccess() }
 
-    private static func builtInDisplayID() -> CGDirectDisplayID {
+    /// Nil when the built-in display is offline (clamshell) or absent: nothing to fold.
+    private static func builtInDisplayID() -> CGDirectDisplayID? {
         var ids = [CGDirectDisplayID](repeating: 0, count: 8)
         var count: UInt32 = 0
         CGGetOnlineDisplayList(8, &ids, &count)
-        return ids.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) != 0 }) ?? CGMainDisplayID()
+        return ids.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) != 0 })
     }
 
     /// Full backing-pixel size. `CGDisplayPixelsWide` reports points on HiDPI modes, so scale by the filter.
@@ -30,8 +31,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private static func filter() async throws -> (SCContentFilter, SCDisplay) {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let id = builtInDisplayID()
-        guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first else {
+        guard let id = builtInDisplayID(), let display = content.displays.first(where: { $0.displayID == id }) else {
             throw NSError(domain: "FluidFold", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display"])
         }
         let me = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
@@ -51,9 +51,8 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Rect-based one-shot screenshot (macOS 15.2+). Experiment: may avoid the ~0.8 s capture-session wind-down.
     static func snapshotImage() async -> CGImage? {
-        let id = builtInDisplayID()
-        let bounds = CGDisplayBounds(id)
-        return try? await SCScreenshotManager.captureImage(in: bounds)
+        guard let id = builtInDisplayID() else { return nil }
+        return try? await SCScreenshotManager.captureImage(in: CGDisplayBounds(id))
     }
 
     /// One-shot screenshot, used for the settings preview.

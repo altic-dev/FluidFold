@@ -14,6 +14,7 @@ struct FoldParams: Codable, Equatable {
     var maxTiltDegrees: Double = 70      // tilt at progress 1 (preview / manual mode)
     var hinge: Double = 0                // 0 = bottom edge (laptop), 1 = top
     var maxTaps: Double = 32             // blur kernel cap
+    var cornerRadius: Double = 12        // glass corner radius in points, matching the display's rounded corners
     // Cosmetics
     var frost: Double = 0
     var sheen: Double = 0.25
@@ -40,7 +41,7 @@ struct FoldParams: Codable, Equatable {
         var maxTaps: Float
         var rampTilt: Float
         var minLight: Float
-        var pad0: Float = 0
+        var cornerRadius: Float
     }
 
     /// - progress: 0..1 normalized closing progress (cosmetic terms, and tilt when `tiltDegrees` is nil).
@@ -63,7 +64,8 @@ struct FoldParams: Codable, Equatable {
             time: Float(time),
             maxTaps: Float(maxTaps),
             rampTilt: Float(rampDegrees * .pi / 180),
-            minLight: Float(minLight)
+            minLight: Float(minLight),
+            cornerRadius: Float(cornerRadius * scale)
         )
     }
 }

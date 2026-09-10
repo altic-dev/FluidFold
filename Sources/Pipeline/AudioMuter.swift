@@ -6,20 +6,22 @@ import Foundation
 /// Only unmutes if it was the one that muted, so a user's own mute is left alone.
 @MainActor
 final class AudioMuter {
-    private var mutedByUs = false
+    /// The device we muted. Unmute targets it explicitly, so a default-device change (headphones dropping on
+    /// sleep) never leaves the wrong device muted.
+    private var mutedDevice: AudioDeviceID?
 
     func mute() {
-        guard !mutedByUs, let device = defaultOutputDevice() else { return }
+        guard mutedDevice == nil, let device = defaultOutputDevice() else { return }
         if isMuted(device) { return }        // already muted by the user; don't take ownership
         setMuted(device, true)
-        mutedByUs = true
+        mutedDevice = device
         dlog("audio muted")
     }
 
     func unmute() {
-        guard mutedByUs, let device = defaultOutputDevice() else { mutedByUs = false; return }
+        guard let device = mutedDevice else { return }
         setMuted(device, false)
-        mutedByUs = false
+        mutedDevice = nil
         dlog("audio unmuted")
     }
 

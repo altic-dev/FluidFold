@@ -231,11 +231,13 @@ final class FoldRecorder {
             let fm = FileManager.default
             try? fm.createDirectory(at: folds, withIntermediateDirectories: true)
             let log = dir.appendingPathComponent("folds.log")
-            if let h = try? FileHandle(forWritingTo: log) {
+            let size = (try? log.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            if size < 2_000_000, let h = try? FileHandle(forWritingTo: log) {
                 h.seekToEndOfFile(); h.write(Data(report.utf8)); try? h.close()
             } else {
-                try? report.write(to: log, atomically: true, encoding: .utf8)
+                try? report.write(to: log, atomically: true, encoding: .utf8)   // new file, or start over past 2 MB
             }
+            guard DevHooks.enabled else { return }
             try? csv.write(to: folds.appendingPathComponent("fold-\(number).csv"), atomically: true, encoding: .utf8)
             try? ticksCSV.write(to: folds.appendingPathComponent("fold-\(number)-ticks.csv"), atomically: true, encoding: .utf8)
             // Keep the newest 30 per-fold CSVs.

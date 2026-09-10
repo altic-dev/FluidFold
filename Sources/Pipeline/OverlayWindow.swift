@@ -18,6 +18,7 @@ final class OverlayWindow: NSWindow {
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
         acceptsMouseMovedEvents = false
+        observeScreens()
         if UserDefaults.standard.bool(forKey: "debugPlainView") {
             let v = NSView(); v.wantsLayer = true; v.layer?.backgroundColor = NSColor.red.cgColor
             contentView = v
@@ -64,14 +65,30 @@ final class OverlayWindow: NSWindow {
         if event.keyCode == 53 { onDismiss?() } // Esc
     }
 
+    /// The MacBook's own display. Nil in clamshell mode or on a desktop: the fold only ever targets the lid's screen.
     static func builtInScreen() -> NSScreen? {
         NSScreen.screens.first { screen in
             guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { return false }
             return CGDisplayIsBuiltin(id) != 0
-        } ?? NSScreen.main
+        }
     }
 
     private(set) var isPrepared = false
+    var onScreensChanged: (() -> Void)?
+    private var screenObserver: Any?
+
+    /// Forget the prepared frame so the next `prepare()` re-reads the built-in display.
+    func reset() {
+        orderOut(nil)
+        isPrepared = false
+    }
+
+    private func observeScreens() {
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            self?.onScreensChanged?()
+        }
+    }
 
     /// Orders the window in invisibly and click-through, so the window server has the full-screen surface
     /// ready before the fold starts. Showing it later is then only an alpha change.

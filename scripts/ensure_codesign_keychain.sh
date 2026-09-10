@@ -21,7 +21,7 @@ ensure_codesign_keychain() {
     if [ ! -f "${keychain_path}" ]; then
         echo "⚠️  Keychain not found at: ${keychain_path}"
         echo "    Set KEYCHAIN_PATH to the correct keychain file."
-        return 0
+        return 1
     fi
 
     # 1) Check whether the keychain is locked. `show-keychain-info` returns
@@ -37,8 +37,8 @@ ensure_codesign_keychain() {
     #    when stdin is a TTY; otherwise bail with a clear message.
     if [ "${was_locked}" = "1" ]; then
         echo "🔐 Login keychain is locked."
-        if [ -n "${KEYCHAIN_PASSWORD}" ]; then
-            if ! security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain_path}" 2>/dev/null; then
+        if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
+            if ! security unlock-keychain -p "${KEYCHAIN_PASSWORD:-}" "${keychain_path}" 2>/dev/null; then
                 echo "❌ KEYCHAIN_PASSWORD was set but failed to unlock the keychain."
                 return 1
             fi

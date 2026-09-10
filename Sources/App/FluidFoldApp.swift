@@ -66,19 +66,22 @@ struct MenuBarLabel: View {
         Image(nsImage: controller.isEnabled ? MenuBarIcon.active : MenuBarIcon.paused)
             // Dev hook (scripts, screenshots): open Settings without clicking the menu.
             .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.settings"))) { _ in
+                guard DevHooks.enabled else { return }
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }
             .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.onboarding"))) { _ in
+                guard DevHooks.enabled else { return }
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "onboarding")
             }
             .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.guide"))) { _ in
+                guard DevHooks.enabled else { return }
                 permissions.requestScreenRecording()
             }
             .task {
                 // First run (or permission revoked): show the welcome window instead of a bare system prompt.
-                if !permissions.screenRecording {
+                if controller.sensorAvailable && !permissions.screenRecording {
                     NSApp.activate(ignoringOtherApps: true)
                     openWindow(id: "onboarding")
                 }

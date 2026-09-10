@@ -10,7 +10,11 @@ final class EffectController: ObservableObject {
     @Published private(set) var isLivePreview = false
     @Published var isPaused = false { didSet { evaluate() } }
     @Published var isEnabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "enabled"); evaluate() }
+        didSet {
+            UserDefaults.standard.set(isEnabled, forKey: "enabled")
+            if sensorAvailable { isEnabled ? sensor.start() : sensor.stop() }
+            evaluate()
+        }
     }
     let sensorAvailable: Bool
 
@@ -227,15 +231,17 @@ final class EffectController: ObservableObject {
             guard let self, CACurrentMediaTime() >= self.injectingUntil else { return }
             self.receive(sample)
         }
-        // Debug: `scripts/sweep.sh` runs a fake lid sweep in-process at the real sensor cadence (10 Hz).
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.sweep"), object: nil, queue: .main) { [weak self] note in
-            let seconds = (note.object as? String).flatMap(Double.init) ?? 1.5
-            self?.runFakeSweep(secondsPerDirection: seconds)
-        }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.inject"), object: nil, queue: .main) { [weak self] note in
-            guard let self, let value = (note.object as? String).flatMap(Double.init) else { return }
-            self.injectingUntil = CACurrentMediaTime() + 1.5
-            self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: value.rounded(), fine: value, fused: value))
+        if DevHooks.enabled {
+            // Dev: `tools/sweep.sh` runs a fake lid sweep in-process at the real sensor cadence (10 Hz).
+            DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.sweep"), object: nil, queue: .main) { [weak self] note in
+                let seconds = (note.object as? String).flatMap(Double.init) ?? 1.5
+                self?.runFakeSweep(secondsPerDirection: seconds)
+            }
+            DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.inject"), object: nil, queue: .main) { [weak self] note in
+                guard let self, let value = (note.object as? String).flatMap(Double.init) else { return }
+                self.injectingUntil = CACurrentMediaTime() + 1.5
+                self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: value.rounded(), fine: value, fused: value))
+            }
         }
         capturer.onFrame = { [weak self] buffer, timestamp in
             let received = CACurrentMediaTime()
@@ -249,9 +255,10 @@ final class EffectController: ObservableObject {
             angle = tracker.ingest(coarse: sample.coarse, fine: sample.fine)
             renderer.sensorSampleID = sample.id
         }
-        sensor.start()
+        if sensorAvailable && isEnabled { sensor.start() }
         evaluate()
-        warmUp()
+        if sensorAvailable { warmUp() }
+        overlay.onScreensChanged = { [weak self] in self?.screensChanged() }
 
         let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
@@ -535,7 +542,7 @@ final class EffectController: ObservableObject {
     }
 
     private func showOverlay() {
-        guard ScreenCapturer.hasPermission() else { ScreenCapturer.requestPermission(); return }
+        guard ScreenCapturer.hasPermission() else { return }
         wantShowAt = CACurrentMediaTime()
         if useStream {
             startCapture()
@@ -600,6 +607,17 @@ final class EffectController: ObservableObject {
             foldedActionsDone = false
             muter.unmute()
         }
+    }
+
+    /// Quit while folded: restore audio so a mute never outlives the app.
+    func prepareForTermination() {
+        muter.unmute()
+    }
+
+    /// Displays changed (lid clamshell, external monitor plugged/unplugged). Drop any fold in progress; the
+    /// overlay re-prepares itself for the built-in display on the next zone entry.
+    private func screensChanged() {
+        if isShowing { userDismissed() } else { overlay.reset() }
     }
 
     private func hideOverlay() {

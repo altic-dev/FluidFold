@@ -27,7 +27,7 @@ struct FoldUniforms {
     float maxTaps;      // blur kernel cap
     float rampTilt;     // radians over which blur/darkening ease in from zero
     float minLight;     // brightness floor for the darkening term
-    float pad0;
+    float cornerRadius; // glass corner radius in pixels
 };
 
 struct VOut { float4 pos [[position]]; float2 uv; };
@@ -56,6 +56,11 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
     if (tilt < 1e-4) {
         return float4(tex.sample(s, in.uv).rgb, 1.0);
     }
+
+    // Round the glass corners like the display's; outside the rounded rect is empty space.
+    const float2 q = abs(p - size * 0.5) - (size * 0.5 - u.cornerRadius);
+    const float edge = length(max(q, 0.0)) - u.cornerRadius;
+    if (edge > 0.5) return float4(0, 0, 0, 1);
 
     // Distance of this pixel from the hinge edge, along the glass.
     const float hingeY = mix(size.y, 0.0, u.hinge);
@@ -107,6 +112,7 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
     const float bandPos = mix(0.85 - 0.7 * u.progress, 0.15 + 0.7 * u.progress, u.hinge);
     col += u.sheen * u.progress * exp(-pow((in.uv.y - bandPos) * 6.0, 2.0)) * 0.2;
     col = mix(col, float3(1.0), u.frost * saturate(radius / 40.0));
+    col *= 1.0 - smoothstep(-0.5, 0.5, edge);
 
     return float4(col, 1.0);
 }
