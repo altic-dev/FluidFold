@@ -72,6 +72,9 @@ struct MenuBarLabel: View {
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "onboarding")
             }
+            .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.guide"))) { _ in
+                permissions.requestScreenRecording()
+            }
             .task {
                 // First run (or permission revoked): show the welcome window instead of a bare system prompt.
                 if !permissions.screenRecording {

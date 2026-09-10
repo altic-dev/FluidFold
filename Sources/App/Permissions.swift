@@ -14,6 +14,8 @@ final class PermissionsModel: ObservableObject {
     @AppStorage("askedScreenRecording") private var asked = false
     private var pollTask: Task<Void, Never>?
     private var activeObserver: Any?
+    private lazy var guide = ScreenRecordingGuide(isGranted: { CGPreflightScreenCaptureAccess() },
+                                                  onFinished: { [weak self] in self?.refresh() })
 
     init() {
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
@@ -48,15 +50,13 @@ final class PermissionsModel: ObservableObject {
     }
 
     /// First time: the system prompt (it also adds FluidFold to the list). After that: System Settings.
-    var actionTitle: String { asked ? "Open Settings" : "Allow" }
+    var actionTitle: String { "Show Guide" }
 
+    /// Always the guided flow: the system prompt alone leaves the toggle off on macOS 15+, so users need the pane anyway.
     func requestScreenRecording() {
-        if !asked {
-            asked = true
-            CGRequestScreenCaptureAccess()
-        } else {
-            Permissions.openScreenRecordingSettings()
-        }
+        dlog("requestScreenRecording")
+        asked = true
+        guide.begin()
         startPolling()
     }
 
@@ -146,43 +146,57 @@ struct PermissionRow: View {
 }
 
 /// Filled brand-blue capsule with FluidVoice's hover treatment (lift, glow, outer ring).
+/// A real ButtonStyle so hits are handled by SwiftUI, including inside Form rows.
 struct PillButton: View {
     let title: String
     var systemImage: String? = nil
     var action: () -> Void
 
-    @State private var hovered = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
-        let shape = Capsule()
         Button(action: action) {
             HStack(spacing: 6) {
                 if let systemImage { Image(systemName: systemImage).font(.system(size: 9.5, weight: .bold)) }
                 Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
             }
+        }
+        .buttonStyle(PillButtonStyle())
+    }
+}
+
+struct PillButtonStyle: ButtonStyle {
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = Capsule()
+        let lifted = hovered && !configuration.isPressed
+        configuration.label
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(
-                shape.fill(FluidBrand.blue)
-                    .overlay(shape.fill(Color.white.opacity(hovered ? 0.10 : 0)))
-                    .overlay(shape.stroke(Color.white.opacity(hovered ? 0.30 : 0), lineWidth: 1))
-                    .overlay(shape.stroke(FluidBrand.blue.opacity(hovered ? 0.5 : 0), lineWidth: 1.4).padding(-2))
-                    .shadow(color: FluidBrand.blue.opacity(hovered ? 0.5 : 0.22), radius: hovered ? 12 : 6, y: hovered ? 4 : 2)
+                shape.fill(FluidBrand.blue.opacity(configuration.isPressed ? 0.8 : 1))
+                    .overlay(shape.fill(Color.white.opacity(lifted ? 0.10 : 0)))
+                    .overlay(shape.stroke(Color.white.opacity(lifted ? 0.30 : 0), lineWidth: 1))
+                    .overlay(shape.stroke(FluidBrand.blue.opacity(lifted ? 0.5 : 0), lineWidth: 1.4).padding(-2))
+                    .shadow(color: FluidBrand.blue.opacity(lifted ? 0.5 : 0.22), radius: lifted ? 12 : 6, y: lifted ? 4 : 2)
             )
             .contentShape(shape)
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .onHover { h in
-            if reduceMotion { hovered = h } else { withAnimation(.easeOut(duration: 0.14)) { hovered = h } }
-        }
+            .onHover { h in
+                if reduceMotion { hovered = h } else { withAnimation(.easeOut(duration: 0.14)) { hovered = h } }
+            }
     }
 }
 
 enum Permissions {
     static func openScreenRecordingSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        dlog("opening Screen Recording settings")
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+        NSWorkspace.shared.open(url, configuration: .init()) { _, error in
+            if let error {
+                dlog("settings URL failed: \(error); falling back to open(1)")
+                let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/open"); p.arguments = [url.absoluteString]; try? p.run()
+            }
+        }
     }
 }
