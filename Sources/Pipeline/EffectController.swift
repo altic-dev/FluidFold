@@ -31,6 +31,23 @@ final class EffectController: ObservableObject {
     private var hasFrame = false
     private var pendingShow = false
     private var previewReference: Double?
+
+    // Interpolation: the sensor publishes ~10 values/s; frames are drawn at display rate between them.
+    // The displayed angle moves linearly from where it is to the newest reading over one sensor interval,
+    // so it lands exactly on the reading and stops there. No overshoot, no settling tail.
+    private(set) var displayedAngle: Double = 120
+    private var interpFrom: Double = 120
+    private var interpTo: Double = 120
+    private var interpStart: Double = 0
+    private var interpDuration: Double = 0.1
+    private var lastSampleTime: Double = CACurrentMediaTime()
+    private var displayLink: CADisplayLink?
+    private var hideWhenSettled = false
+    private var lastSampleID: UInt64 = 0
+    private var lastFPSCheck = CACurrentMediaTime()
+    private var tickCount = 0
+    private var displayFPS = 0.0
+    private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
     private var referenceAngle: Double { previewReference ?? startAngle }
     private var active: Bool { isEnabled && !isPaused && armed }
     private var wantsOverlay: Bool { active && (isLivePreview || angle < referenceAngle) }
@@ -102,7 +119,12 @@ final class EffectController: ObservableObject {
                                     values: [target, tracker.usingFine ? 1 : 0, tracker.configuration.fineDeadband])
         if angle != target {
             renderer.sensorSampleID = sample.id
+            lastSampleID = sample.id
+            let now = CACurrentMediaTime()
             angle = target
+            // Aim the displayed angle at the new reading over roughly one sensor interval.
+            startInterpolation(to: target, duration: min(max(now - lastSampleTime, 0.04), 0.15), now: now)
+            lastSampleTime = now
             evaluate()
         }
         // Logged on every poll, including stillness and times when no overlay is visible.
@@ -140,13 +162,16 @@ final class EffectController: ObservableObject {
         if angle >= startAngle + 3 { armed = true }
         if wantsOverlay {
             minAngleSeen = min(minAngleSeen, angle)
-            if isShowing { applySensorPose() }
+            hideWhenSettled = false
+            if isShowing { ensureDisplayLink() }
             else if !pendingShow { showOverlay() }
         } else {
             pendingShow = false
-            if isShowing {
-                let opened = active && minAngleSeen < startAngle - 10
-                hideOverlay(playSound: opened)
+            if isShowing && !hideWhenSettled {
+                // Glide back to tilt 0 first; at tilt 0 the overlay equals the live screen, so the hide is invisible.
+                hideWhenSettled = true
+                startInterpolation(to: referenceAngle, duration: 0.12, now: CACurrentMediaTime())
+                ensureDisplayLink()
             }
         }
         if !active || angle > referenceAngle + prewarmDegrees + 5 && !isLivePreview {
@@ -157,14 +182,60 @@ final class EffectController: ObservableObject {
         }
     }
 
-    /// No integration, velocity, easing, prediction, or elapsed-time input can advance the fold.
-    private func applySensorPose() {
-        let pose = LidPose(angle: angle, referenceAngle: referenceAngle, endAngle: endAngle)
+    private func startInterpolation(to target: Double, duration: Double, now: Double) {
+        interpFrom = displayedAngle
+        interpTo = target
+        interpStart = now
+        interpDuration = duration
+        if isShowing { ensureDisplayLink() }
+    }
+
+    private func ensureDisplayLink() {
+        guard displayLink == nil else { return }
+        displayLink = overlay.metalView.displayLink(target: self, selector: #selector(displayTick))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc private func displayTick(_ link: CADisplayLink) {
+        let now = CACurrentMediaTime()
+        let t = interpDuration > 0 ? min(max((now - interpStart) / interpDuration, 0), 1) : 1
+        displayedAngle = interpFrom + (interpTo - interpFrom) * t
+        applyPose(displayedAngle, now: now)
+        if t >= 1 {
+            if hideWhenSettled {
+                hideWhenSettled = false
+                let opened = active && minAngleSeen < startAngle - 10
+                hideOverlay(playSound: opened)
+            }
+            stopDisplayLink()   // static lid: capture frames alone drive redraws
+        }
+    }
+
+    /// Renders the fold for a displayed angle. The pose is a pure function of that angle.
+    private func applyPose(_ shown: Double, now: Double) {
+        let pose = LidPose(angle: shown, referenceAngle: referenceAngle, endAngle: endAngle)
         renderer.progress = pose.progress
         renderer.tiltDegrees = pose.tiltDegrees
         TrackingTrace.shared.record("effect_update", id: renderer.sensorSampleID,
-                                    values: [angle, pose.tiltDegrees, pose.progress, referenceAngle, endAngle])
+                                    values: [shown, pose.tiltDegrees, pose.progress, referenceAngle, endAngle, angle])
+        if hudEnabled { updateHUD(now: now, pose: pose) }
         overlay.metalView.requestRender()
+    }
+
+    private func updateHUD(now: Double, pose: LidPose) {
+        tickCount += 1
+        if now - lastFPSCheck >= 0.5 {
+            displayFPS = Double(tickCount) / (now - lastFPSCheck)
+            tickCount = 0; lastFPSCheck = now
+        }
+        overlay.hudText = String(format: "frame %llu   sensor #%llu   sensor %.2f°   shown %.2f°   behind %+.2f°   tilt %.2f°   p %.3f   %.0f ms since sample   %.0f fps   gpu %.1f ms",
+                                 TrackingTrace.shared.currentFrameID, lastSampleID, angle, displayedAngle, displayedAngle - angle,
+                                 pose.tiltDegrees, pose.progress, (now - lastSampleTime) * 1000, displayFPS, renderer.gpuMs)
     }
 
     private func showOverlay() {
@@ -179,15 +250,22 @@ final class EffectController: ObservableObject {
         isShowing = true
         renderer.resetDump()
         minAngleSeen = angle
-        applySensorPose()
+        // Crossing the threshold from above: first frame at tilt 0 (identical to the live screen), then glide in.
+        // Re-appearing further in (after wake or live preview): start at the real angle.
+        displayedAngle = angle > referenceAngle - 3 ? referenceAngle : angle
+        startInterpolation(to: angle, duration: 0.1, now: CACurrentMediaTime())
+        applyPose(displayedAngle, now: CACurrentMediaTime())
         overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero
                                                 ?? (OverlayWindow.builtInScreen()?.backingScaleFactor ?? 2))
         overlay.show()
+        ensureDisplayLink()
     }
 
     private func hideOverlay(playSound: Bool) {
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
         isShowing = false
+        hideWhenSettled = false
+        stopDisplayLink()
         overlay.hide()
         if playSound && soundEnabled { SoundPlayer.click() }
     }

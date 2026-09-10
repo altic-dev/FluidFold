@@ -21,9 +21,41 @@ final class OverlayWindow: NSWindow {
         if UserDefaults.standard.bool(forKey: "debugPlainView") {
             let v = NSView(); v.wantsLayer = true; v.layer?.backgroundColor = NSColor.red.cgColor
             contentView = v
+        } else if UserDefaults.standard.bool(forKey: "debugHUD") {
+            // Metal view plus a readout strip on top (debug only).
+            let container = NSView()
+            container.wantsLayer = true
+            metalView.translatesAutoresizingMaskIntoConstraints = false
+            hudLabel.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(metalView)
+            container.addSubview(hudLabel)
+            NSLayoutConstraint.activate([
+                metalView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                metalView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                metalView.topAnchor.constraint(equalTo: container.topAnchor),
+                metalView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                hudLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+                hudLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 40),
+            ])
+            contentView = container
         } else {
             contentView = metalView
         }
+    }
+
+    /// Debug readout (frame, sensor sample, angles). Shown only with `defaults write com.altic.Duofy debugHUD -bool true`.
+    private let hudLabel: NSTextField = {
+        let l = NSTextField(labelWithString: "")
+        l.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
+        l.textColor = .white
+        l.backgroundColor = NSColor.black.withAlphaComponent(0.6)
+        l.drawsBackground = true
+        l.isBezeled = false
+        return l
+    }()
+
+    var hudText: String = "" {
+        didSet { hudLabel.stringValue = hudText }
     }
 
     override var canBecomeKey: Bool { true }

@@ -68,6 +68,11 @@ final class TrackingTrace {
         events.append(Event(name: name, time: time, id: id, values: values))
     }
 
+    var currentFrameID: UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        return sequence
+    }
+
     func nextFrameID() -> UInt64 {
         lock.lock()
         defer { lock.unlock() }
