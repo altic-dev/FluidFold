@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Summarize the newest tracking trace: timeline frames drawn, presented, stalls."""
 import csv, glob, os, sys
-f = sys.argv[1] if len(sys.argv) > 1 else max(glob.glob(os.path.expanduser("~/Library/Logs/HingeTracking/*.csv")), key=os.path.getmtime)
+f = sys.argv[1] if len(sys.argv) > 1 else max(glob.glob(os.path.expanduser("~/Library/Logs/DuskTracking/*.csv")), key=os.path.getmtime)
 rows = list(csv.DictReader(open(f)))
 tf = [r for r in rows if r["event"] == "timeline_frame"]
 pres = sorted(float(r["b"]) for r in rows if r["event"] == "presented" and r["b"] and float(r["b"]) > 0)

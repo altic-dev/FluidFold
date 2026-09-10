@@ -32,7 +32,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let id = builtInDisplayID()
         guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first else {
-            throw NSError(domain: "Hinge", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display"])
+            throw NSError(domain: "Dusk", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display"])
         }
         let me = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
         return (SCContentFilter(display: display, excludingApplications: me, exceptingWindows: []), display)

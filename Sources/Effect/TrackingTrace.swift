@@ -27,7 +27,7 @@ final class TrackingTrace {
         queue.async { [self] in
             flush()
             try? file?.close()
-            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/HingeTracking")
+            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DuskTracking")
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let name = "tracking-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(6)).csv"
             let url = dir.appendingPathComponent(name)

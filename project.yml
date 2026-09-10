@@ -1,4 +1,4 @@
-name: Hinge
+name: Dusk
 options:
   bundleIdPrefix: com.altic
   deploymentTarget:
@@ -15,7 +15,7 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 targets:
-  Hinge:
+  Dusk:
     type: application
     platform: macOS
     sources:
@@ -25,29 +25,29 @@ targets:
         type: folder
         buildPhase: resources
     entitlements:
-      path: Hinge.entitlements
+      path: Dusk.entitlements
       properties:
         com.apple.security.cs.disable-library-validation: false
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Hinge
+        CFBundleDisplayName: Dusk
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true
         LSMinimumSystemVersion: "15.2"
-        NSScreenCaptureUsageDescription: Hinge captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
+        NSScreenCaptureUsageDescription: Dusk captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
         NSHumanReadableCopyright: Copyright © 2026 Altic
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Hinge
-        PRODUCT_NAME: Hinge
-        CODE_SIGN_ENTITLEMENTS: Hinge.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Dusk
+        PRODUCT_NAME: Dusk
+        CODE_SIGN_ENTITLEMENTS: Dusk.entitlements
         SWIFT_OPTIMIZATION_LEVEL: "-O"
 schemes:
-  Hinge:
+  Dusk:
     build:
       targets:
-        Hinge: all
+        Dusk: all
     run:
       config: Release

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct HingeApp: App {
+struct DuskApp: App {
     @StateObject private var state = AppState()
     @Environment(\.openSettings) private var openSettings
 
@@ -17,7 +17,7 @@ struct HingeApp: App {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }.keyboardShortcut(",")
-            Button("Quit Hinge") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            Button("Quit Dusk") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
             MenuBarLabel(controller: state.controller)
         }

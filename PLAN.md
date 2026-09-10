@@ -1,4 +1,4 @@
-# Hinge — Plan & Milestones
+# Dusk — Plan & Milestones
 
 Goal: a lightweight macOS menu bar app that animates the desktop as the MacBook lid closes
 (recreating trybendy.app). The visual effect is an isolated, hot-reloadable module so the

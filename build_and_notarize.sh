@@ -1,11 +1,11 @@
 #!/bin/bash
-# Hinge release build: universal archive, Developer ID signing, notarization, stapling, DMG.
+# Dusk release build: universal archive, Developer ID signing, notarization, stapling, DMG.
 # Usage: ./build_and_notarize.sh            (env: SKIP_NOTARIZE=1 to only sign)
 # Prereq (once): xcrun notarytool store-credentials notarize --apple-id <id> --team-id TEAMID
 set -euo pipefail
 
-APP_NAME="Hinge"
-SCHEME="Hinge"
+APP_NAME="Dusk"
+SCHEME="Dusk"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${PROJECT_DIR}/build/release"
 ARCHIVE_PATH="${BUILD_DIR}/${APP_NAME}.xcarchive"

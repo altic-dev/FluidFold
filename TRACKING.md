@@ -78,7 +78,7 @@ build/tracker-tests
 build/tracker-tests build/lid-calibration/baseline-sensor.csv
 ```
 
-Traces are written to `~/Library/Logs/HingeTracking/tracking-*.csv`. Set the `trackingTrace` default
+Traces are written to `~/Library/Logs/DuskTracking/tracking-*.csv`. Set the `trackingTrace` default
 only when startup tracing is needed; normal use leaves it disabled. The old `legacyTracking`
 default, synthetic sweep, and timed stationary-check hook are no longer used.
 

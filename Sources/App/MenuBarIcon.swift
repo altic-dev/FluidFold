@@ -17,17 +17,17 @@ enum MenuBarIcon {
             base.move(to: NSPoint(x: 2, y: y))
             base.line(to: NSPoint(x: 18, y: y))
             base.stroke()
-            // Lid: hinged at the right end of the base, length ~13, angle = lid angle (0 = flat on base, 90 = upright).
-            let angle = max(0, min(angleDegrees, 125)) * .pi / 180
-            let hinge = NSPoint(x: 17, y: y)
-            let len: CGFloat = 12
+            // Lid: hinged at the right end of the base. 0 = flat on the base, 90 = upright; capped so it never clips.
+            let angle = max(0, min(angleDegrees, 100)) * .pi / 180
+            let hinge = NSPoint(x: 16, y: y)
+            let len: CGFloat = 10.5
             let tip = NSPoint(x: hinge.x - len * CGFloat(cos(angle)), y: hinge.y + len * CGFloat(sin(angle)))
             let lid = NSBezierPath()
             lid.lineWidth = stroke
             lid.lineCapStyle = .round
             lid.move(to: hinge)
             lid.line(to: tip)
-            if paused { lid.setLineDash([2, 2], count: 2, phase: 0) }
+            if paused { NSColor.black.withAlphaComponent(0.35).setStroke() }
             lid.stroke()
             return true
         }
