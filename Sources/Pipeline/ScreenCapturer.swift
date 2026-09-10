@@ -6,6 +6,7 @@ import AppKit
 /// Streams the built-in display (excluding this app's own windows) as BGRA pixel buffers.
 final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     var onFrame: ((CVPixelBuffer) -> Void)?
+    var onStopped: (() -> Void)?
     private var stream: SCStream?
     private var starting = false
     private let queue = DispatchQueue(label: "duofy.capture", qos: .userInteractive)
@@ -78,5 +79,6 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         dlog("stream stopped: \(error)")
         self.stream = nil
+        DispatchQueue.main.async { self.onStopped?() }
     }
 }

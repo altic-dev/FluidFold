@@ -54,17 +54,28 @@ final class EffectController: ObservableObject {
         }
         if let a = sensor.readAngle() { angle = a }
         sensor.start()
+        // Closing the lid sleeps the Mac. Keep the overlay (with its last frame) across sleep so that on wake
+        // the reverse animation continues from the real angle instead of restarting from tilt 0.
         let ws = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
             ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.hideOverlay(playSound: false)
-                self?.capturer.stop(); self?.hasFrame = false
+                dlog("sleep: stopping capture (overlay showing=\(self?.isShowing ?? false))")
+                self?.capturer.stop()
             }
         }
-        ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self else { return }
-            if let a = self.sensor.readAngle() { self.angle = a }
-            self.evaluate()
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                if let a = self.sensor.readAngle() { self.angle = a }
+                dlog("wake: angle=\(self.angle) showing=\(self.isShowing)")
+                if self.isShowing { Task { await self.capturer.start() } }
+                self.evaluate()
+            }
+        }
+        capturer.onStopped = { [weak self] in
+            guard let self, self.isShowing else { return }
+            dlog("capture stopped while showing; restarting")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { Task { await self.capturer.start() } }
         }
     }
 
@@ -160,7 +171,9 @@ final class EffectController: ObservableObject {
         settlingToHide = false
         renderer.resetDump()
         minAngleSeen = angle
-        smoothedAngle = startAngle
+        // Crossing the threshold from above: start at tilt 0 so the first frame equals the live screen.
+        // Re-appearing further in (e.g. after wake): start at the real angle.
+        smoothedAngle = angle > startAngle - 3 ? startAngle : angle
         angleVelocity = 0
         applyAngle(smoothedAngle)
         overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero ?? (overlay.screen?.backingScaleFactor ?? 2))
