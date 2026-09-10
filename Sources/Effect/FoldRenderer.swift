@@ -16,6 +16,37 @@ final class FoldRenderer: NSObject {
     /// Physical degrees closed since the effect started. nil = derive from progress (preview).
     var tiltDegrees: Double?
     var sensorSampleID: UInt64 = 0
+    /// Caller's label for the next frame (the timeline frame number). Carried into `FrameTiming`.
+    var frameTag: Int = 0
+
+    /// Per-frame timings, delivered on the main queue once the frame has been presented (or discarded).
+    struct FrameTiming {
+        let tag: Int
+        let request: Double        // render(into:) called
+        let drawStart: Double      // encode started (render queue)
+        let acquired: Double       // nextDrawable returned
+        var gpuStart: Double = 0
+        var gpuEnd: Double = 0
+        var presented: Double = 0  // 0 = never shown
+    }
+    var onFrameTiming: ((FrameTiming) -> Void)?
+    private let timingLock = NSLock()
+    private var partialTimings: [UInt64: (timing: FrameTiming, gpuDone: Bool, presentDone: Bool)] = [:]
+
+    private func updateTiming(_ id: UInt64, _ change: (inout FrameTiming) -> Void, gpu: Bool = false, present: Bool = false) {
+        timingLock.lock()
+        guard var entry = partialTimings[id] else { timingLock.unlock(); return }
+        change(&entry.timing)
+        if gpu { entry.gpuDone = true }
+        if present { entry.presentDone = true }
+        let finished = entry.gpuDone && entry.presentDone
+        if finished { partialTimings[id] = nil } else { partialTimings[id] = entry }
+        timingLock.unlock()
+        if finished, let cb = onFrameTiming {
+            let t = entry.timing
+            DispatchQueue.main.async { cb(t) }
+        }
+    }
     private var sourceTimestamp: Double = 0
     /// Points-per-pixel scale of the target (2 on Retina). Set by the view.
     var contentsScale: Double = 2
@@ -29,7 +60,7 @@ final class FoldRenderer: NSObject {
     private var textureCache: CVMetalTextureCache?
     private let startTime = CACurrentMediaTime()
     /// One encode/GPU submission at a time; a single pending request always uses the newest inputs.
-    private let inflight = DispatchSemaphore(value: 2)
+    private let inflight = DispatchSemaphore(value: max(1, min(3, UserDefaults.standard.integer(forKey: "expInflight").nonZeroOr(3))))
     private let renderQueue = DispatchQueue(label: "duofy.render", qos: .userInteractive)
     private var pendingLayer: CAMetalLayer?
     private(set) var droppedFrames = 0
@@ -123,6 +154,15 @@ final class FoldRenderer: NSObject {
         pendingSource = texture
     }
 
+    /// CGImage source (one-shot screenshots). Uploaded synchronously (~10 ms at 3024x1964).
+    func setSource(cgImage: CGImage) {
+        let loader = MTKTextureLoader(device: device)
+        if let tex = try? loader.newTexture(cgImage: cgImage, options: [.SRGB: false, .textureUsage: NSNumber(value: MTLTextureUsage.shaderRead.rawValue)]) {
+            pendingSource = tex
+            pendingRetain = []
+        }
+    }
+
     /// BGRA pixel buffer from ScreenCaptureKit / AVFoundation.
     func setSource(pixelBuffer: CVPixelBuffer, timestamp: Double = 0) {
         guard let cache = textureCache else { return }
@@ -167,6 +207,8 @@ final class FoldRenderer: NSObject {
         let sourceTimestamp: Double
         let scale: Double
         let dumpDir: String?
+        let tag: Int
+        let request: Double
     }
 
     var debugLog = false
@@ -184,7 +226,8 @@ final class FoldRenderer: NSObject {
         let input = FrameInput(frameID: frameID, sampleID: sensorSampleID, params: params,
                                progress: progress, tiltDegrees: tiltDegrees, pipeline: pipeline,
                                source: pendingSource, retain: pendingRetain, sourceTimestamp: sourceTimestamp,
-                               scale: Double(layer.contentsScale), dumpDir: dumpDir)
+                               scale: Double(layer.contentsScale), dumpDir: dumpDir,
+                               tag: frameTag, request: CACurrentMediaTime())
         pendingSource = nil
         pendingRetain = []
         TrackingTrace.shared.record("render_request", id: frameID, values: [Double(sensorSampleID)])
@@ -206,20 +249,30 @@ final class FoldRenderer: NSObject {
             DispatchQueue.main.async { [weak self] in self?.renderPendingFrame() }
             return
         }
+        if onFrameTiming != nil {
+            timingLock.lock()
+            partialTimings[frameID] = (FrameTiming(tag: input.tag, request: input.request, drawStart: drawStart,
+                                                   acquired: CACurrentMediaTime()), false, false)
+            timingLock.unlock()
+        }
         TrackingTrace.shared.record("draw", id: frameID, time: drawStart,
                                     values: [Double(sampleID), CACurrentMediaTime(), tiltDegrees ?? -1, progress,
                                              input.sourceTimestamp, Double(drawable.texture.width), Double(drawable.texture.height)])
         let permit = inflight
-        // A frame stays "in flight" until the display is done with it (shown or discarded). Releasing on GPU
-        // completion instead lets us queue frames faster than the screen shows them, which starves the
-        // drawable pool and blocks nextDrawable() for tens of milliseconds.
-        drawable.addPresentedHandler { surface in
-            permit.signal()
+        // Slots are released when the GPU finishes. The caller renders at most once per display refresh, so we
+        // never queue frames faster than the screen shows them. (Releasing on presentation instead can lose the
+        // final frame: if the compositor discards a frame, the retry tied to its presentation never happens.)
+        drawable.addPresentedHandler { [weak self] surface in
+            let shown = surface.presentedTime
+            self?.updateTiming(frameID, { $0.presented = shown }, present: true)
             TrackingTrace.shared.record("presented", id: frameID,
                                         values: [Double(sampleID), surface.presentedTime])
-            DispatchQueue.main.async { [weak self] in self?.renderPendingFrame() }
         }
-        cmd.addCompletedHandler { cb in
+        cmd.addCompletedHandler { [weak self] cb in
+            permit.signal()
+            DispatchQueue.main.async { [weak self] in self?.renderPendingFrame() }
+            let gs = cb.gpuStartTime, ge = cb.gpuEndTime
+            self?.updateTiming(frameID, { $0.gpuStart = gs; $0.gpuEnd = ge }, gpu: true)
             TrackingTrace.shared.record("gpu", id: frameID,
                                         values: [Double(sampleID), cb.gpuStartTime, cb.gpuEndTime, Double(cb.status.rawValue)])
         }
@@ -335,7 +388,7 @@ final class FoldMetalView: NSView {
         let l = CAMetalLayer()
         l.device = renderer.device
         l.pixelFormat = .bgra8Unorm
-        l.maximumDrawableCount = 3
+        l.maximumDrawableCount = max(2, min(3, UserDefaults.standard.integer(forKey: "expDrawables").nonZeroOr(3)))
         l.isOpaque = true
         l.backgroundColor = CGColor(gray: 0, alpha: 1)
         l.framebufferOnly = renderer.debugDumpDir == nil
@@ -374,4 +427,8 @@ final class FoldMetalView: NSView {
         guard window?.isVisible == true else { return }
         renderer.render(into: metalLayer)
     }
+}
+
+private extension Int {
+    func nonZeroOr(_ d: Int) -> Int { self == 0 ? d : self }
 }

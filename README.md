@@ -28,8 +28,7 @@ Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
 **Timeline model.** The fold is a fixed timeline from the start angle A (frame 0, flat) to the end angle B
 (last frame). The lid is the playhead: closing plays forward, opening rewinds, and the same angle always shows
 the same frame. One desktop snapshot is frozen when the fold appears, and every frame is computed from it, so
-forward and rewind are identical. Frames are computed on demand (~2.5 ms on the GPU) instead of being stored,
-which gives the same result as pre-rendering without the ~3 GB of memory.
+forward and rewind are identical. Frames are computed on demand (~2.5 ms on the GPU) instead of stored.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -38,11 +37,48 @@ which gives the same result as pre-rendering without the ~3 GB of memory.
 
 **Playhead.** The hinge sensor publishes ~10 readings/s. Between readings the playhead follows a cubic glide:
 it passes exactly through each reading, keeps speed continuous, eases into a stop, and never overshoots.
-It trails the lid by about one sensor interval (~110 ms). A frame is drawn only when the frame number changes.
+It trails the lid by about one sensor interval (~110 ms). A frame is drawn only when the frame number changes,
+paced by a display link (120 Hz on ProMotion).
+
+**Snapshot, not a stream.** The desktop is captured with the rect-based `SCScreenshotManager.captureImage(in:)`
+(~40 ms, full Retina) while the lid moves in the pre-warm zone (10° above A), refreshed every 250 ms, and once
+more at the threshold if the last one is older than 500 ms. There is no capture stream: any ScreenCaptureKit
+*session* (streams, and the session-based screenshot APIs) keeps the window server compositing our window for
+~0.8 s afterwards, which triples frame latency and drops one refresh in three. The rect screenshot does not.
+The overlay window is ordered in invisibly when the zone is entered, so showing it is only an alpha change, and
+keyboard focus (for Esc) is taken only once the lid is still. A launch-time warm-up exercises all of this once.
+
+**Adaptive pacing.** If frames still take >26 ms to reach the glass (window server compositing for any reason),
+the playhead presents on every other refresh: a steady 60 instead of a ragged 80.
 
 **Look.** Frosted-glass reprojection, adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation):
 the glass (lid) rotates about the bottom hinge; each pixel casts a ray from the eye through the tilted glass to the
 desktop plane and blurs/darkens in proportion to the glass-to-plane gap.
+
+## Smoothness reports (always on)
+
+Every fold writes a report to `~/Library/Logs/Duofy/folds.log` and a per-frame CSV to `~/Library/Logs/Duofy/folds/`:
+
+```
+fold #131  2.73 s  lid 86.1° → 20.0° → 105.0°  readings 16  on screen 195 (71 fps)  never shown 1
+  start  (0–300 ms)     30 frames  irregular  0/2   missed  0  holds  0  max gap   8.3 ms
+  middle               137 frames  irregular  1/95  missed  1  holds  0  max gap  16.7 ms  ← compositor ×1
+  end    (last 300 ms)  28 frames  irregular  0/22  missed  0  holds  0  max gap   8.3 ms
+  worst: drawable wait 17.3 ms   GPU queue 0.8 ms   GPU 2.5 ms
+  VERDICT: SMOOTH
+```
+
+- **irregular** = the on-screen cadence changed while the playhead was moving (e.g. 8 ms then 17 ms). This is
+  what the eye sees as stutter. A steady 60 or 120 is not irregular.
+- **missed / holds** = refreshes with no new frame while one was wanted; the arrow names the slow stage.
+- **worst** = per-stage maxima: drawable wait (window server), GPU queue, GPU time.
+
+```bash
+scripts/last_fold.sh [n]                    # newest n reports
+scripts/sweep.sh 0.9                        # fake lid: close in 0.9 s, hold 1 s, reopen (real sensor cadence)
+nohup scripts/bench.sh "label" 5 -- key value ... &   # restart app, 5 sweeps, one summary line (run detached so
+                                            # the terminal/Claude window is idle: its redraws show up as stutter)
+```
 
 ## Tuning the graphics (the part meant to be iterated on)
 
@@ -72,8 +108,7 @@ Note: MTKView presents stale surfaces on macOS 27 beta, so `FoldMetalView` drive
 ## Debugging
 
 ```bash
-scripts/sweep.sh 1.5                                      # fake lid sweep at the real sensor cadence
-scripts/trace_tracking.sh && scripts/sweep.sh && python3 scripts/analyze_sweep.py   # frames, stalls
+scripts/trace_tracking.sh && scripts/sweep.sh && python3 scripts/analyze_sweep.py   # raw per-frame trace
 defaults write com.altic.Duofy debugHUD -bool true        # on-screen frame / sensor readout (costs frames)
 defaults write com.altic.Duofy debugLog -bool true        # ~/Library/Logs/Duofy.log
 defaults write com.altic.Duofy debugDumpDir "$PWD/build"  # writes build/duofy_frame.png at mid-sweep

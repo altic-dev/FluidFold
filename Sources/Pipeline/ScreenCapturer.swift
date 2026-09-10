@@ -9,6 +9,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     var onStopped: (() -> Void)?
     private var stream: SCStream?
     private var starting = false
+    private var lastConfig: SCStreamConfiguration?
     private let queue = DispatchQueue(label: "duofy.capture", qos: .userInteractive)
 
     static func hasPermission() -> Bool { CGPreflightScreenCaptureAccess() }
@@ -21,6 +22,12 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         return ids.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) != 0 }) ?? CGMainDisplayID()
     }
 
+    /// Full backing-pixel size. `CGDisplayPixelsWide` reports points on HiDPI modes, so scale by the filter.
+    private static func pixelSize(_ display: SCDisplay, _ filter: SCContentFilter) -> (Int, Int) {
+        let scale = Double(filter.pointPixelScale)
+        return (Int(Double(display.width) * scale), Int(Double(display.height) * scale))
+    }
+
     private static func filter() async throws -> (SCContentFilter, SCDisplay) {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let id = builtInDisplayID()
@@ -31,16 +38,35 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         return (SCContentFilter(display: display, excludingApplications: me, exceptingWindows: []), display)
     }
 
+    /// One-shot BGRA snapshot at full pixel resolution (~40 ms). No stream, so nothing to start, throttle, or tear down.
+    static func snapshotPixelBuffer() async -> CVPixelBuffer? {
+        guard let (filter, display) = try? await filter() else { return nil }
+        let cfg = SCStreamConfiguration()
+        (cfg.width, cfg.height) = Self.pixelSize(display, filter)
+        cfg.pixelFormat = kCVPixelFormatType_32BGRA
+        cfg.showsCursor = false
+        guard let sb = try? await SCScreenshotManager.captureSampleBuffer(contentFilter: filter, configuration: cfg) else { return nil }
+        return CMSampleBufferGetImageBuffer(sb)
+    }
+
+    /// Rect-based one-shot screenshot (macOS 15.2+). Experiment: may avoid the ~0.8 s capture-session wind-down.
+    static func snapshotImage() async -> CGImage? {
+        guard #available(macOS 15.2, *) else { return nil }
+        let id = builtInDisplayID()
+        let bounds = CGDisplayBounds(id)
+        return try? await SCScreenshotManager.captureImage(in: bounds)
+    }
+
     /// One-shot screenshot, used for the settings preview.
     static func snapshot() async -> CGImage? {
         guard let (filter, display) = try? await filter() else { return nil }
         let cfg = SCStreamConfiguration()
-        cfg.width = CGDisplayPixelsWide(display.displayID); cfg.height = CGDisplayPixelsHigh(display.displayID)
+        (cfg.width, cfg.height) = Self.pixelSize(display, filter)
         cfg.showsCursor = false
         return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
     }
 
-    func start(fps: Int = 60) async {
+    func start(fps: Int = 30) async {
         guard stream == nil, !starting else { return }
         starting = true
         TrackingTrace.shared.record("capture_start")
@@ -48,11 +74,12 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let (filter, display) = try? await Self.filter() else { return }
         let cfg = SCStreamConfiguration()
         // Full pixel resolution so the tilt-0 frame is indistinguishable from the live screen.
-        cfg.width = CGDisplayPixelsWide(display.displayID); cfg.height = CGDisplayPixelsHigh(display.displayID)
+        (cfg.width, cfg.height) = Self.pixelSize(display, filter)
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.queueDepth = 3
         cfg.showsCursor = false
+        lastConfig = cfg
         let s = SCStream(filter: filter, configuration: cfg, delegate: self)
         do {
             try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
@@ -62,6 +89,13 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         } catch {
             dlog("capture start failed: \(error)")
         }
+    }
+
+    /// Changes the stream's frame rate without restarting it (much cheaper than stop + start).
+    func setFrameRate(_ fps: Double) {
+        guard let s = stream, let cfg = lastConfig else { return }
+        cfg.minimumFrameInterval = CMTime(seconds: 1 / max(fps, 0.5), preferredTimescale: 600)
+        s.updateConfiguration(cfg) { _ in }
     }
 
     func stop() {

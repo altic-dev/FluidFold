@@ -26,3 +26,20 @@ for i in range(1, len(pres)):
     if (b - a) * 1000 > 20 and any(a < x < b - 0.004 for x in drawn_t):
         stalls.append(round((b - a) * 1000, 1))
 print(f"real stalls (drawn but not shown for >20ms): {len(stalls)}  {stalls[:15]}")
+
+# Motion smoothness as seen on screen: per-vsync frame advance while the lid is moving.
+by_id = {}
+for r in rows:
+    if r["event"] == "draw":
+        by_id.setdefault(int(r["id"]), {})["tilt"] = float(r["c"])
+    elif r["event"] == "presented" and r["b"] and float(r["b"]) > 0:
+        by_id.setdefault(int(r["id"]), {})["t"] = float(r["b"])
+seq = sorted((v["t"], v["tilt"]) for v in by_id.values() if "t" in v and "tilt" in v)
+holds = hitches = moving = 0
+for i in range(1, len(seq)):
+    (ta, a), (tb, b) = seq[i - 1], seq[i]
+    if 1 < abs(b - a) / 0.05 or (i + 1 < len(seq) and abs(seq[i + 1][1] - b) > 0.05):
+        moving += 1
+        if abs(b - a) < 1e-6: holds += 1
+        if (tb - ta) > 0.0125: hitches += 1
+print(f"on-screen while moving: {moving} vsyncs   held (no advance): {holds}   missed vsync (>12.5ms): {hitches}")

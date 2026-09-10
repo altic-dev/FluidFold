@@ -56,6 +56,139 @@ final class EffectController: ObservableObject {
     private var framesShownThisFold = 0
     private var foldStartTime: Double = 0
     private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
+    /// Always-on per-fold smoothness report: ~/Library/Logs/Duofy/folds.log
+    let recorder = FoldRecorder()
+    // Start-up timing, reported with each fold.
+    private var captureRequestedAt: Double?
+    private var firstCaptureFrameAt: Double?
+    private var captureSize = CGSize.zero
+    private var wantShowAt: Double?
+
+    /// Cold start costs a whole fold (first screenshot ~110 ms, shader and drawable pool first use, window-server
+    /// surface creation). Exercise all of it once at launch with the window invisible.
+    private func warmUp() {
+        guard ScreenCapturer.hasPermission(), !isShowing else { return }
+        prepareOverlayIfNeeded()
+        takeSnapshot(reason: "warm-up")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, !self.isShowing, !self.pendingShow else { return }
+            for frame in [0, 400, 1000] {
+                let pose = self.timeline.pose(frame: frame)
+                self.renderer.progress = pose.progress
+                self.renderer.tiltDegrees = pose.tiltDegrees
+                self.overlay.metalView.requestRender()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, !self.isShowing, !self.pendingShow, self.captureRequestedAt == nil else { return }
+                if self.overlay.isPrepared && self.angle > self.referenceAngle + self.prewarmDegrees { self.overlay.hide() }
+                self.hasFrame = false
+                self.lastShotAt = 0
+            }
+        }
+    }
+
+    /// Snapshot mode (default): one-shot screenshots while the lid moves in the pre-warm zone; no stream.
+    /// Stream mode (`expStream`): the old ScreenCaptureKit stream, kept for A/B benchmarks.
+    private let useStream = UserDefaults.standard.bool(forKey: "expStream")
+    private var lastShotAt: Double = 0
+    private var shotInFlight = false
+    private var lastAngleChangeAt: Double = 0
+
+    private func takeSnapshot(reason: String) {
+        guard !shotInFlight else { return }
+        shotInFlight = true
+        let requested = CACurrentMediaTime()
+        if captureRequestedAt == nil { captureRequestedAt = requested; firstCaptureFrameAt = nil }
+        // Rect screenshots (macOS 15.2+) don't spin up a capture session, so the window server keeps our window on
+        // the direct-to-display path (~13 ms to glass) instead of compositing it (~40 ms, ragged) for ~0.8 s.
+        let useRect = !UserDefaults.standard.bool(forKey: "expSessionShot")
+        Task { [weak self] in
+            if useRect, let img = await ScreenCapturer.snapshotImage() {
+                await MainActor.run {
+                    guard let self else { return }
+                    self.shotInFlight = false
+                    self.lastShotAt = CACurrentMediaTime()
+                    self.ingest(cgImage: img, timestamp: requested, received: self.lastShotAt)
+                }
+                return
+            }
+            let pb = await ScreenCapturer.snapshotPixelBuffer()
+            await MainActor.run {
+                guard let self else { return }
+                self.shotInFlight = false
+                guard let pb else { return }
+                self.lastShotAt = CACurrentMediaTime()
+                self.ingest(pixelBuffer: pb, timestamp: requested, received: self.lastShotAt)
+            }
+        }
+    }
+
+    private func ingest(cgImage: CGImage, timestamp: Double, received: Double) {
+        guard !isShowing else { return }
+        if firstCaptureFrameAt == nil {
+            firstCaptureFrameAt = received
+            captureSize = CGSize(width: cgImage.width, height: cgImage.height)
+        }
+        renderer.setSource(cgImage: cgImage)
+        afterIngest()
+    }
+
+    /// Adopts a captured frame as the (next) snapshot. Ignored while the fold is showing (frozen picture).
+    private func ingest(pixelBuffer buffer: CVPixelBuffer, timestamp: Double, received: Double) {
+        guard !isShowing else { return }
+        if firstCaptureFrameAt == nil {
+            firstCaptureFrameAt = received
+            captureSize = CGSize(width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
+        }
+        renderer.setSource(pixelBuffer: buffer, timestamp: timestamp)
+        afterIngest()
+    }
+
+    private func afterIngest() {
+        hasFrame = true
+        if pendingShow {
+            pendingShow = false
+            if wantsOverlay { presentOverlay() }
+        } else if overlay.isPrepared {
+            // Keep an invisible, up-to-date frame 0 in the window so showing it is instant.
+            let pose = timeline.pose(frame: 0)
+            renderer.progress = pose.progress
+            renderer.tiltDegrees = pose.tiltDegrees
+            overlay.metalView.requestRender()
+        }
+    }
+
+    private func startCapture() {
+        if !useStream {
+            // Refresh the snapshot while the lid is moving toward the threshold, at most every 250 ms.
+            let now = CACurrentMediaTime()
+            if now - lastAngleChangeAt < 0.4 && now - lastShotAt > 0.25 { takeSnapshot(reason: "prewarm") }
+            if !isShowing { prepareOverlayIfNeeded() }
+            return
+        }
+        if captureRequestedAt == nil { captureRequestedAt = CACurrentMediaTime(); firstCaptureFrameAt = nil }
+        Task { await capturer.start() }
+        if !isShowing {
+            overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero
+                                                    ?? (OverlayWindow.builtInScreen()?.backingScaleFactor ?? 2))
+            overlay.prepare()
+        }
+    }
+
+    private func prepareOverlayIfNeeded() {
+        overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero
+                                                ?? (OverlayWindow.builtInScreen()?.backingScaleFactor ?? 2))
+        overlay.prepare()
+    }
+
+    private func stopCapture() {
+        if useStream { capturer.stop() }
+        captureRequestedAt = nil
+        firstCaptureFrameAt = nil
+        if !isShowing && overlay.isPrepared { overlay.hide() }
+    }
+
+
     /// Debug: while fake readings are being injected, real sensor samples are ignored.
     private var injectingUntil: Double = 0
 
@@ -75,6 +208,11 @@ final class EffectController: ObservableObject {
         self.renderer = renderer
         renderer.debugLog = UserDefaults.standard.bool(forKey: "debugLog")
         sensorAvailable = sensor.isAvailable
+        renderer.onFrameTiming = { [weak self] timing in
+            guard let self else { return }
+            self.recorder.frame(timing)
+            if timing.presented > 0 { self.notePresentLatency(timing.presented - timing.drawStart) }
+        }
         sensor.onSample = { [weak self] sample in
             guard let self, CACurrentMediaTime() >= self.injectingUntil else { return }
             self.receive(sample)
@@ -94,15 +232,7 @@ final class EffectController: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 TrackingTrace.shared.record("capture_main", values: [received])
-                // Frozen snapshot: once the fold is showing, the picture never changes. Every frame of the
-                // timeline is computed from the same snapshot, so forward and rewind show identical frames.
-                guard !self.isShowing else { return }
-                self.renderer.setSource(pixelBuffer: buffer, timestamp: timestamp)
-                self.hasFrame = true
-                if self.pendingShow {
-                    self.pendingShow = false
-                    if self.wantsOverlay { self.presentOverlay() }
-                }
+                self.ingest(pixelBuffer: buffer, timestamp: timestamp, received: received)
             }
         }
         if let sample = sensor.readSample() {
@@ -111,6 +241,7 @@ final class EffectController: ObservableObject {
         }
         sensor.start()
         evaluate()
+        warmUp()
 
         let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
@@ -139,18 +270,38 @@ final class EffectController: ObservableObject {
 
     private var fakeSweepTimer: Timer?
 
-    /// Debug: 105° → 20°, hold 1 s, → 105°, one reading every 100 ms like the hinge sensor.
+    /// Debug: 105° → 20°, hold 1 s, → 105°. Mimics the real hinge: the sensor value changes every 100 ms,
+    /// and we only see the change on our next 60 Hz poll (so readings land 100 or 117 ms apart).
     private func runFakeSweep(secondsPerDirection: Double) {
         fakeSweepTimer?.invalidate()
-        let steps = max(Int(secondsPerDirection * 10), 1)
-        var readings: [Double] = (0...steps).map { 105 - 85 * Double($0) / Double(steps) }
-        readings += Array(repeating: 20, count: 10)
-        readings += (0...steps).map { 20 + 85 * Double($0) / Double(steps) }
-        var i = 0
-        fakeSweepTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] t in
-            guard let self, i < readings.count else { t.invalidate(); return }
+        // Experiment: take the snapshot this long before the readings begin (models an early pre-warm shot).
+        let lead = UserDefaults.standard.double(forKey: "expShotLeadMs") / 1000
+        if lead > 0 {
+            takeSnapshot(reason: "sweep lead")
+            DispatchQueue.main.asyncAfter(deadline: .now() + lead) { [weak self] in self?.runFakeSweepNow(secondsPerDirection: secondsPerDirection) }
+            return
+        }
+        runFakeSweepNow(secondsPerDirection: secondsPerDirection)
+    }
+
+    private func runFakeSweepNow(secondsPerDirection: Double) {
+        let start = CACurrentMediaTime()
+        let move = max(secondsPerDirection, 0.2)
+        func angleAt(_ t: Double) -> Double {
+            if t < move { return 105 - 85 * t / move }
+            if t < move + 1 { return 20 }
+            return min(20 + 85 * (t - move - 1) / move, 105)
+        }
+        var lastValue = -1.0
+        fakeSweepTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            let elapsed = CACurrentMediaTime() - start
+            if elapsed > 2 * move + 1.5 { t.invalidate(); return }
+            let sensorTime = (elapsed / 0.1).rounded(.down) * 0.1     // sensor publishes every 100 ms
+            let v = (angleAt(sensorTime) * 100).rounded() / 100
             self.injectingUntil = CACurrentMediaTime() + 1.5
-            let v = readings[i]; i += 1
+            guard v != lastValue else { return }
+            lastValue = v
             self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: v.rounded(), fine: v, fused: v))
         }
         RunLoop.main.add(fakeSweepTimer!, forMode: .common)
@@ -164,16 +315,18 @@ final class EffectController: ObservableObject {
             renderer.sensorSampleID = sample.id
             lastSampleID = sample.id
             let now = CACurrentMediaTime()
+            lastAngleChangeAt = now
             angle = target
-            // Glide the playhead to the new reading's frame over about one sensor interval (+10% so it rarely
-            // arrives before the next reading and has to stop).
+            // Glide the playhead to the new reading's frame over about one sensor interval (+25%, so it is still
+            // moving when the next reading lands; readings arrive 100 or 117 ms apart because of 60 Hz polling).
             let interval = min(max(now - lastSampleTime, 0.05), 0.2)
             readingInterval = readingInterval * 0.7 + interval * 0.3
             let targetFrame = timeline.playhead(for: target)
+            recorder.reading(now: now, angle: target, target: targetFrame)
             // Lid speed at the target: 0 when the reading repeats (lid stopped), so the glide eases into a stop.
             let lidVelocity = (targetFrame - lastTarget) / readingInterval
             lastTarget = targetFrame
-            glide(to: targetFrame, endVelocity: lidVelocity, duration: readingInterval * 1.1, now: now)
+            glide(to: targetFrame, endVelocity: lidVelocity, duration: readingInterval * 1.25, now: now)
             lastSampleTime = now
             evaluate()
         }
@@ -227,10 +380,10 @@ final class EffectController: ObservableObject {
         if isShowing {
             // Frozen snapshot in use; no capture while the fold is on screen.
         } else if !active || angle > referenceAngle + prewarmDegrees + 5 && !isLivePreview {
-            capturer.stop()
+            stopCapture()
             hasFrame = false
         } else if !pendingShow && angle < referenceAngle + prewarmDegrees {
-            Task { await capturer.start() }
+            startCapture()
         }
     }
 
@@ -263,26 +416,71 @@ final class EffectController: ObservableObject {
         var p = (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1
         let v = ((6 * s2 - 6 * s) * p0 + (3 * s2 - 4 * s + 1) * m0 + (-6 * s2 + 6 * s) * p1 + (3 * s2 - 2 * s) * m1) / T
         p = min(max(p, min(p0, p1)), max(p0, p1))
-        return (p, s >= 1 ? 0 : v, s >= 1)
+        // At the end, report the lid's speed (not 0) so the next glide continues at speed instead of restarting.
+        return (p, s >= 1 ? glideToVelocity : v, s >= 1)
     }
 
     private func ensureDisplayLink() {
         guard displayLink == nil else { return }
+        recorder.note(String(format: "link start @%.0f→%.0f", playhead, glideTo))
         displayLink = overlay.metalView.displayLink(target: self, selector: #selector(displayTick))
         displayLink?.add(to: .main, forMode: .common)
     }
 
     private func stopDisplayLink() {
+        if displayLink != nil { recorder.note(String(format: "link stop @%.0f→%.0f", playhead, glideTo)) }
         displayLink?.invalidate()
         displayLink = nil
     }
 
+    private var settleWork: DispatchWorkItem?
+
+    // Adaptive pacing. While the window server composites our window (capture session winding down, other
+    // overlays), frames take ~40 ms to reach the screen and only ~2 of every 3 are shown, which reads as jitter.
+    // In that state we present on every other refresh: a steady 60 instead of a ragged 80.
+    private var recentLatencies: [Double] = []
+    private(set) var composited = false
+    private var tickParity = 0
+    private let adaptiveEnabled = !UserDefaults.standard.bool(forKey: "expNoAdaptive")
+
+    private func notePresentLatency(_ latency: Double) {
+        recentLatencies.append(latency)
+        if recentLatencies.count > 4 { recentLatencies.removeFirst() }
+        guard recentLatencies.count >= 3 else { return }
+        let sorted = recentLatencies.sorted()
+        let median = sorted[sorted.count / 2]
+        let was = composited
+        // Hysteresis: direct-to-display is ~13 ms, composited ~40 ms.
+        composited = was ? median > 20.0 / 1000 : median > 26.0 / 1000
+        if composited != was { recorder.note(composited ? "pacing 60 (composited)" : "pacing 120 (direct)") }
+    }
+
+    /// Once the lid has been still for a moment, do the work that would stutter a moving fold.
+    private func scheduleSettled() {
+        settleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isShowing, self.displayLink == nil else { return }
+            if self.useStream && self.captureRequestedAt != nil {
+                self.capturer.stop()
+                self.captureRequestedAt = nil
+                self.recorder.note("settled: capture stopped")
+            }
+            self.overlay.takeFocus()
+        }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
     @objc private func displayTick(_ link: CADisplayLink) {
         let now = CACurrentMediaTime()
+        recorder.period = max(link.targetTimestamp - link.timestamp, 1.0 / 240)
         let g = glidePosition(at: now)
         playhead = g.position
         playheadVelocity = g.velocity
-        show(frame: Int(playhead.rounded()), now: now)
+        recorder.tick(now: now, playhead: playhead, frame: Int(playhead.rounded()), target: glideTo)
+        tickParity ^= 1
+        let skip = adaptiveEnabled && composited && tickParity == 1 && !g.done
+        if !skip { show(frame: Int(playhead.rounded()), now: now) }
         if g.done {
             if hideWhenSettled {
                 hideWhenSettled = false
@@ -290,7 +488,11 @@ final class EffectController: ObservableObject {
                 hideOverlay(playSound: opened)
                 return
             }
-            stopDisplayLink()   // lid is still: nothing to draw until the next reading
+            // Lid at rest (target speed 0): stop drawing. Still moving: keep the link so the next glide starts on time.
+            if glideToVelocity == 0 || now - glideStart > glideDuration + 0.25 {
+                stopDisplayLink()
+                scheduleSettled()
+            }
         }
     }
 
@@ -302,6 +504,7 @@ final class EffectController: ObservableObject {
         let pose = timeline.pose(frame: frame)
         renderer.progress = pose.progress
         renderer.tiltDegrees = pose.tiltDegrees
+        renderer.frameTag = frame
         TrackingTrace.shared.record("timeline_frame", id: renderer.sensorSampleID,
                                     values: [Double(frame), Double(timeline.frameCount), playhead, glideTo, angle, pose.tiltDegrees])
         if hudEnabled {
@@ -314,8 +517,20 @@ final class EffectController: ObservableObject {
 
     private func showOverlay() {
         guard ScreenCapturer.hasPermission() else { ScreenCapturer.requestPermission(); return }
-        Task { await capturer.start() }
-        if hasFrame { presentOverlay() } else { pendingShow = true }
+        wantShowAt = CACurrentMediaTime()
+        if useStream {
+            startCapture()
+            if hasFrame { presentOverlay() } else { pendingShow = true }
+        } else {
+            prepareOverlayIfNeeded()
+            let maxAge = UserDefaults.standard.double(forKey: "snapshotMaxAgeMs").nonZero.map { $0 / 1000 } ?? 0.5
+            if hasFrame && CACurrentMediaTime() - lastShotAt < maxAge {
+                presentOverlay()
+            } else {
+                pendingShow = true
+                takeSnapshot(reason: "threshold")
+            }
+        }
     }
 
     private func presentOverlay() {
@@ -326,16 +541,24 @@ final class EffectController: ObservableObject {
         minAngleSeen = angle
         framesShownThisFold = 0
         foldStartTime = CACurrentMediaTime()
-        // Crossing the threshold from above: frame 0 first (identical to the live screen), then glide in.
+        recorder.begin(now: foldStartTime, timelineFrames: timeline.frameCount, degreesPerFrame: degreesPerFrame, angle: angle)
+        recentLatencies.removeAll()
+        composited = CACurrentMediaTime() - lastShotAt < 1.0   // a fresh capture means the compositor path for ~0.8 s
+        let ms = { (t: Double?) in t.map { String(format: "%.0f", ($0 - self.foldStartTime) * 1000) } ?? "?" }
+        recorder.note("\(useStream ? "stream" : "snapshot") requested \(ms(captureRequestedAt))ms, first frame \(ms(firstCaptureFrameAt))ms, snapshot age \(ms(lastShotAt))ms, threshold crossed \(ms(wantShowAt))ms, \(Int(captureSize.width))x\(Int(captureSize.height))", now: foldStartTime)
+        wantShowAt = nil
+        // Always start at frame 0 (identical to the live screen) and glide in, even if the first reading
+        // below the threshold is already several degrees in (fast close).
         let target = timeline.playhead(for: angle)
-        playhead = target < 15 ? 0 : target
+        playhead = 0
         playheadVelocity = 0
         lastTarget = playhead
-        glide(to: target, endVelocity: 0, duration: 0.1, now: foldStartTime)
+        glide(to: target, endVelocity: 0, duration: max(0.1, min(0.2, target * degreesPerFrame / 60)), now: foldStartTime)
         show(frame: Int(playhead.rounded()), now: foldStartTime, force: true)
-        // Freeze: the pending capture frame becomes the snapshot; stop capturing while the fold is up.
-        capturer.stop()
+        // Freeze: capture frames are ignored from now on. Stopping the stream (or taking keyboard focus) while
+        // the lid moves stutters the fold, so both happen in `settled()`, once the lid is still.
         hasFrame = false
+        if useStream { capturer.setFrameRate(1) }
         overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero
                                                 ?? (OverlayWindow.builtInScreen()?.backingScaleFactor ?? 2))
         overlay.show()
@@ -345,6 +568,8 @@ final class EffectController: ObservableObject {
     private func hideOverlay(playSound: Bool) {
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
         dlog(String(format: "fold done: %.2fs, %d frames drawn, timeline %d frames", CACurrentMediaTime() - foldStartTime, framesShownThisFold, timeline.frameCount))
+        recorder.end(at: CACurrentMediaTime())
+        settleWork?.cancel()
         isShowing = false
         shownFrame = -1
         playhead = 0

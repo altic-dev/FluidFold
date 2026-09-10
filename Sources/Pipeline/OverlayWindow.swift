@@ -71,17 +71,39 @@ final class OverlayWindow: NSWindow {
         } ?? NSScreen.main
     }
 
-    func show() {
-        guard let screen = Self.builtInScreen() else { return }
+    private(set) var isPrepared = false
+
+    /// Orders the window in invisibly and click-through, so the window server has the full-screen surface
+    /// ready before the fold starts. Showing it later is then only an alpha change.
+    func prepare() {
+        guard !isPrepared, let screen = Self.builtInScreen() else { return }
         var f = screen.frame; if UserDefaults.standard.bool(forKey: "debugHalf") { f.size.width /= 2 }
-        setFrame(f, display: true)
-        makeKeyAndOrderFront(nil)
-        dlog("overlay show frame=\(frame) view=\(metalView.frame) err=\(metalView.renderer.shaderError ?? "none")")
+        setFrame(f, display: false)
+        alphaValue = 0
+        ignoresMouseEvents = true
+        orderFrontRegardless()
+        isPrepared = true
+    }
+
+    func show() {
+        prepare()
+        alphaValue = 1
+        ignoresMouseEvents = false
         metalView.requestRender()
+        // Keyboard focus (for Esc) is taken later via `takeFocus()`, once the lid is still: taking it now makes
+        // the app underneath redraw as inactive, which measurably stutters the first frames.
+    }
+
+    func takeFocus() {
+        guard alphaValue > 0, !isKeyWindow else { return }
+        makeKey()
     }
 
     func hide() {
         metalView.renderer.cancelPendingRender()
+        alphaValue = 0
+        ignoresMouseEvents = true
         orderOut(nil)
+        isPrepared = false
     }
 }

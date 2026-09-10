@@ -26,8 +26,9 @@ Contract between Pipeline and Effect: `renderer.setSource(pixelBuffer:)`, `rende
 | M5 | Physically based effect: frosted-glass reprojection (ported from DuoLikeAnimation), spring-smoothed sensor | done |
 | M6 | Smoothness: pre-warmed capture, tilt-0 first frame at Retina res, settle-before-hide, display-link pacing, GPU ~3 ms/frame, sleep/wake handling | done |
 | M7 | Timeline model: fixed A→B frames, frozen snapshot, lid as playhead, cubic glide, 120 fps (drawable starvation fixed) | done |
-| M8 | Live refresh: update the snapshot mid-fold when the desktop changes, without moving the playhead | next |
-| M9 | Feel tuning with Barath: blurSpread / ramp / darkening presets | later |
+| M8 | Smoothness from numbers: always-on per-fold report (`folds.log`), fake-sweep benchmark, root causes found and fixed: capture *sessions* force compositing (→ rect screenshot, no stream), cold start (→ launch warm-up), focus/teardown during motion (→ deferred to settle), pipeline starvation (→ release on GPU completion). ~120 fps while moving, ≤3 cadence blips per fold | done |
+| M9 | Live refresh: update the snapshot mid-fold when the desktop changes, without moving the playhead | next |
+| M10 | Feel tuning with Barath: blurSpread / ramp / darkening presets | later |
 | Later | Developer ID + notarization + DMG (needs Barath's Developer ID cert), licensing (skipped for personal build) | later |
 
 ## Tuning workflow (M5)
