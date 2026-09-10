@@ -49,7 +49,7 @@ struct TuningPanel: View {
                 }
                 Text(renderer.shaderError ?? "Shader OK. Edit the file and save; it reloads automatically.")
                     .font(.caption.monospaced())
-                    .foregroundStyle(renderer.shaderError == nil ? .secondary : .red)
+                    .foregroundStyle(renderer.shaderError == nil ? Color.secondary : Color.red)
                     .textSelection(.enabled)
             }
             if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary) }

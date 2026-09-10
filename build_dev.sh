@@ -78,6 +78,8 @@ if [ "${INSTALL_APP}" = "1" ]; then
     ditto "${BUILT_APP}" "${INSTALL_PATH}"
     xattr -cr "${INSTALL_PATH}" 2>/dev/null || true
     echo "✓ Installed to ${INSTALL_PATH}"
+    # Dev builds hot-reload the shader from the repo file.
+    defaults write com.altic.Duofy shaderOverridePath "${PROJECT_DIR}/Sources/Effect/Shaders/FoldEffect.metal"
     if [ "${LAUNCH_APP}" = "1" ]; then
         open "${INSTALL_PATH}"
         echo "✓ Launched"

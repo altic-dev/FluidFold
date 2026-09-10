@@ -18,7 +18,12 @@ targets:
   Duofy:
     type: application
     platform: macOS
-    sources: [Sources]
+    sources:
+      - path: Sources
+        excludes: ["Effect/Shaders/**"]
+      - path: Sources/Effect/Shaders
+        type: folder
+        buildPhase: resources
     entitlements:
       path: Duofy.entitlements
       properties:
