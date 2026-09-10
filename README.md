@@ -16,7 +16,7 @@ Nothing is recorded or uploaded. macOS 15.2+ (needs the rect screenshot API), Ap
   `.example` file to change identity.
 - Env knobs: `CONFIGURATION=Debug`, `INSTALL_APP=0`, `LAUNCH_APP=0`.
 - Release: `./build_and_notarize.sh` → universal (arm64 + x86_64) app signed with Developer ID, notarized and
-  stapled, packaged as `build/release/FluidFold-<version>.dmg`. Needs the `notarize` notarytool profile.
+  stapled, packaged as `build/release/FluidFold-<version>.dmg`. Needs `release.env` (copy `release.env.example`) and a notarytool profile.
 - First launch asks for Screen Recording. Grant it, then relaunch.
 
 ## Using it
