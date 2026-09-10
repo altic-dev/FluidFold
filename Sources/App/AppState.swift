@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @AppStorage("customParams") private var customParamsJSON: String = ""
     @AppStorage("startAngle") var startAngle: Double = 95 { didSet { controller.startAngle = startAngle } }
     @AppStorage("endAngle") var endAngle: Double = 25 { didSet { controller.endAngle = endAngle } }
+    @AppStorage("muteAudioWhileFolded") var muteAudioWhileFolded: Bool = false { didSet { controller.muteAudioWhileFolded = muteAudioWhileFolded } }
 
     /// The params actually rendered. Starts from the style preset; Tuning edits persist as custom.
     @Published var params: FoldParams = .silk { didSet { persistParams() } }
@@ -45,6 +46,7 @@ final class AppState: ObservableObject {
         }
         controller.startAngle = startAngle
         controller.endAngle = endAngle
+        controller.muteAudioWhileFolded = muteAudioWhileFolded
         renderer.params = params
         // Dev hook: starts the sensor-driven live preview.
         DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.preview"), object: nil, queue: .main) { [weak self] _ in

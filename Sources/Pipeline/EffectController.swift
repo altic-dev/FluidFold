@@ -14,6 +14,11 @@ final class EffectController: ObservableObject {
     }
     let sensorAvailable: Bool
 
+    /// Things the fold does besides drawing. Each is a setting; more can be added here.
+    var muteAudioWhileFolded = false { didSet { if !muteAudioWhileFolded { muter.unmute() } } }
+    private let muter = AudioMuter()
+    private var foldedActionsDone = false
+
     var startAngle: Double = 95 { didSet { evaluate() } }
     var endAngle: Double = 25 { didSet { evaluate() } }
     var prewarmDegrees: Double = 10
@@ -513,6 +518,7 @@ final class EffectController: ObservableObject {
     private func show(frame: Int, now: Double, force: Bool = false) {
         guard force || frame != shownFrame else { return }
         shownFrame = frame
+        updateFoldedActions(frame: frame)
         framesShownThisFold += 1
         let pose = timeline.pose(frame: frame)
         renderer.progress = pose.progress
@@ -584,7 +590,21 @@ final class EffectController: ObservableObject {
         ensureDisplayLink()
     }
 
+    /// Fully folded = last frame. Actions trigger there (not at the first frame), so a lid nudge does nothing.
+    private func updateFoldedActions(frame: Int) {
+        let folded = frame >= timeline.frameCount - 1
+        if folded && !foldedActionsDone {
+            foldedActionsDone = true
+            if muteAudioWhileFolded { muter.mute() }
+        } else if !folded && foldedActionsDone && frame < timeline.frameCount / 2 {
+            foldedActionsDone = false
+            muter.unmute()
+        }
+    }
+
     private func hideOverlay() {
+        foldedActionsDone = false
+        muter.unmute()
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
         dlog(String(format: "fold done: %.2fs, %d frames drawn, timeline %d frames", CACurrentMediaTime() - foldStartTime, framesShownThisFold, timeline.frameCount))
         recorder.end(at: CACurrentMediaTime())

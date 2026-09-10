@@ -60,6 +60,14 @@ struct GeneralPane: View {
             }
 
             Section {
+                Toggle("Mute audio", isOn: $state.muteAudioWhileFolded)
+            } header: {
+                Text("While folded")
+            } footer: {
+                Text("Applies once the desktop is fully folded and is undone when you open the lid. A mute you set yourself is left alone.")
+            }
+
+            Section {
                 PermissionRow(title: "Screen Recording",
                               subtitle: permissions.screenRecording
                                 ? "FluidFold can snapshot your desktop."
