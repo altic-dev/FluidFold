@@ -57,11 +57,6 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
         return float4(tex.sample(s, in.uv).rgb, 1.0);
     }
 
-    // Round the glass corners like the display's; outside the rounded rect is empty space.
-    const float2 q = abs(p - size * 0.5) - (size * 0.5 - u.cornerRadius);
-    const float edge = length(max(q, 0.0)) - u.cornerRadius;
-    if (edge > 0.5) return float4(0, 0, 0, 1);
-
     // Distance of this pixel from the hinge edge, along the glass.
     const float hingeY = mix(size.y, 0.0, u.hinge);
     const float side   = mix(-1.0, 1.0, u.hinge);   // direction away from the hinge, in y-down pixels
@@ -81,7 +76,10 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
     const float gap    = glass.z;
     const float radius = u.blurSpread * ramp * gap;
 
-    if (any(hit < -radius) || any(hit > size + radius)) return float4(0, 0, 0, 1);
+    // The desktop plane has the display's rounded corners; past its edge (plus blur bleed) is empty space.
+    const float2 q    = abs(hit - size * 0.5) - (size * 0.5 - u.cornerRadius);
+    const float  edge = length(max(q, 0.0)) - u.cornerRadius - radius;
+    if (edge > 0.5) return float4(0, 0, 0, 1);
 
     const float2 hitUV = hit / size;
     float3 col;
