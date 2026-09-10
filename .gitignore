@@ -31,3 +31,9 @@ docs/
 notes/
 CLAUDE.md
 .claude/
+
+# Generated
+Info.plist
+
+# Local dev tooling
+tools/

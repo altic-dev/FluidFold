@@ -23,17 +23,15 @@ Nothing is recorded or uploaded. One snapshot of your desktop is taken as the li
 
 ```bash
 brew install xcodegen
-cp xcconfig/LocalSigning.example.xcconfig xcconfig/LocalSigning.xcconfig   # your dev signing identity
-./build_dev.sh                                                             # builds, installs, launches
+cp xcconfig/LocalSigning.example.xcconfig xcconfig/LocalSigning.xcconfig
+./build.sh
 ```
 
 ## Code
 
 - `Sources/App` — menu bar, settings, onboarding
-- `Sources/Pipeline` — lid sensor, screen capture, overlay window, controller
-- `Sources/Effect` — the effect: `FoldParams.swift` (tunables and presets), `Shaders/FoldEffect.metal` (hot-reloaded at runtime), `FoldRenderer.swift`
-
-Every fold writes a smoothness report to `~/Library/Logs/FluidFold/folds.log`. Dev helpers live in `scripts/`.
+- `Sources/Pipeline` — lid sensor, screen capture, overlay, controller
+- `Sources/Effect` — Metal fold effect and presets
 
 Effect adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation). Inspired by [Bendy](https://trybendy.app).
 
