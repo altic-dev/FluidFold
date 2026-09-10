@@ -56,7 +56,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: FluidFold.entitlements
         SWIFT_OPTIMIZATION_LEVEL: "-O"
         CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 1.0.0
+        MARKETING_VERSION: 1.0.1
         SPARKLE_FEED_URL: https://github.com/altic-dev/FluidFold/releases/latest/download/appcast.xml
         SPARKLE_PUBLIC_ED_KEY: "5GbAfhMoLQPgU22ur80o0atj8QTYJvRnf1AH66+DZs4="
 schemes:
