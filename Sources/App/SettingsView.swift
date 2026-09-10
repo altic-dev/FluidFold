@@ -5,8 +5,8 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            AppearanceTab().tabItem { Label("Appearance", systemImage: "sparkles") }
-            GeneralTab().tabItem { Label("General", systemImage: "gearshape") }
+            AppearanceTab(controller: state.controller).tabItem { Label("Appearance", systemImage: "sparkles") }
+            GeneralTab(controller: state.controller).tabItem { Label("General", systemImage: "gearshape") }
             TuningTab().tabItem { Label("Tuning", systemImage: "slider.horizontal.3") }
         }
         .frame(width: 560, height: 620)
@@ -14,16 +14,23 @@ struct SettingsView: View {
 }
 
 /// Live MacBook mock with the fold rendered inside its screen.
+private final class PreviewRendererState: ObservableObject {
+    let renderer = FoldRenderer()
+}
+
 struct MacBookPreview: View {
     @EnvironmentObject var state: AppState
+    @ObservedObject var controller: EffectController
+    let angle: Double
+    @StateObject private var preview = PreviewRendererState()
     @State private var snapshot: CGImage?
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.12))
-                FoldPreviewView(renderer: state.renderer,
-                                progress: state.controller.progress(for: state.previewAngle),
+                FoldPreviewView(renderer: preview.renderer,
+                                progress: controller.progress(for: angle),
                                 params: state.params,
                                 sourceImage: snapshot)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -49,6 +56,7 @@ struct MacBookPreview: View {
 
 struct AppearanceTab: View {
     @EnvironmentObject var state: AppState
+    @ObservedObject var controller: EffectController
     /// 0 = far eye (flat), 1 = close eye (strong perspective)
     private var perspective: Binding<Double> {
         Binding(get: { 1 - (state.params.eyeDistanceMM - 250) / 1000 },
@@ -57,7 +65,7 @@ struct AppearanceTab: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            MacBookPreview().padding(.horizontal, 24).padding(.top, 16)
+            MacBookPreview(controller: controller, angle: state.followSensor ? controller.angle : state.manualAngle).padding(.horizontal, 24).padding(.top, 16)
             Form {
                 Picker("Style", selection: $state.style) {
                     ForEach(FoldStyle.allCases) { Text($0.rawValue).tag($0) }
@@ -66,7 +74,7 @@ struct AppearanceTab: View {
                 HStack {
                     Text("Lid angle")
                     Slider(value: $state.manualAngle, in: 0...130).disabled(state.followSensor)
-                    Text("\(Int(state.previewAngle))°").monospacedDigit().frame(width: 40)
+                    Text(String(format: "%.2f°", state.followSensor ? controller.angle : state.manualAngle)).monospacedDigit().frame(width: 65)
                 }
                 HStack { Text("Perspective"); Slider(value: perspective, in: 0...1) }
                 HStack { Text("Blur"); Slider(value: $state.params.blurSpread, in: 0...0.3) }
@@ -79,6 +87,7 @@ struct AppearanceTab: View {
 
 struct GeneralTab: View {
     @EnvironmentObject var state: AppState
+    @ObservedObject var controller: EffectController
 
     var body: some View {
         Form {
@@ -103,7 +112,8 @@ struct GeneralTab: View {
                 Text("Frames are processed locally. Nothing is recorded, saved, or uploaded.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Sensor") {
-                Text(state.controller.sensorAvailable ? "Hinge sensor: \(Int(state.controller.angle))°" : "Hinge sensor not found")
+                Text(controller.sensorAvailable ? String(format: "Hinge sensor: %.2f°", controller.angle) : "Hinge sensor not found")
+                Text(controller.trackingStatus)
             }
         }
         .formStyle(.grouped)
@@ -125,11 +135,12 @@ struct TuningTab: View {
 /// Preview driven by an explicit progress (Tuning tab).
 struct MacBookPreviewAt: View {
     @EnvironmentObject var state: AppState
+    @StateObject private var preview = PreviewRendererState()
     @State private var snapshot: CGImage?
     let progress: Double
 
     var body: some View {
-        FoldPreviewView(renderer: state.renderer, progress: progress, params: state.params, sourceImage: snapshot)
+        FoldPreviewView(renderer: preview.renderer, progress: progress, params: state.params, sourceImage: snapshot)
             .aspectRatio(1.6, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .task { if ScreenCapturer.hasPermission() { snapshot = await ScreenCapturer.snapshot() } }

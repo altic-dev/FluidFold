@@ -48,5 +48,8 @@ final class OverlayWindow: NSWindow {
         metalView.requestRender()
     }
 
-    func hide() { orderOut(nil) }
+    func hide() {
+        metalView.renderer.cancelPendingRender()
+        orderOut(nil)
+    }
 }

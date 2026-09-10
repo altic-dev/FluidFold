@@ -35,6 +35,10 @@ final class AppState: ObservableObject {
 
     init() {
         controller = EffectController(renderer: renderer)
+        if UserDefaults.standard.bool(forKey: "trackingTrace") { TrackingTrace.shared.start() }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.trace"), object: nil, queue: .main) { _ in
+            TrackingTrace.shared.start()
+        }
         if let data = customParamsJSON.data(using: .utf8), let p = try? JSONDecoder().decode(FoldParams.self, from: data) {
             params = p
         } else {
@@ -44,9 +48,9 @@ final class AppState: ObservableObject {
         controller.endAngle = endAngle
         controller.soundEnabled = soundEnabled
         renderer.params = params
-        // Dev hook: `scripts/preview.sh` posts this to run the on-screen sweep without touching the lid.
+        // Dev hook: starts the same sensor-driven preview as the menu item.
         DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.preview"), object: nil, queue: .main) { [weak self] _ in
-            self?.controller.simulateClose()
+            self?.controller.beginLivePreview()
         }
     }
 

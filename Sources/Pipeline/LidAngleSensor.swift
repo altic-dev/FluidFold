@@ -1,11 +1,19 @@
 import Foundation
 import IOKit.hid
+import QuartzCore
 
 /// Reads the MacBook hinge angle from the built-in HID sensor (usage page 0x20, usage 0x8A).
-/// Two reports are fused: report 1 is whole degrees and fresh; report 7 is 0.01° but updates at ~10 Hz.
-/// Polls on a background queue; `onAngle` is called on the main queue when the fused value changes.
+/// Report 1 is whole degrees; report 7 has 0.01° resolution. Both changed around 10 Hz in calibration.
+/// Raw polls and read boundaries are traced, including unchanged values. `fused`/`onAngle` preserve
+/// the old selection rule for A/B measurement; LidTracker consumes the raw reports.
 final class LidAngleSensor {
-    struct Sample { let coarse: Double; let fine: Double?; let fused: Double }
+    struct Sample {
+        let id: UInt64
+        let time: Double
+        let coarse: Double
+        let fine: Double?
+        let fused: Double
+    }
     var onAngle: ((Double) -> Void)?
     var onSample: ((Sample) -> Void)?
     private(set) var isAvailable = false
@@ -13,7 +21,8 @@ final class LidAngleSensor {
     private var manager: IOHIDManager?
     private var timer: DispatchSourceTimer?
     private var lastFused: Double = -1
-    private var lastFine: Double?
+    private var nextID: UInt64 = 0
+    private let readLock = NSLock()
 
     init() {
         let m = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -47,12 +56,24 @@ final class LidAngleSensor {
     func readAngle() -> Double? { readSample()?.fused }
 
     func readSample() -> Sample? {
-        guard let coarse = readCoarse() else { return nil }
+        readLock.lock()
+        defer { readLock.unlock() }
+        let start = CACurrentMediaTime()
+        guard let coarse = readCoarse() else {
+            TrackingTrace.shared.record("sensor_failure", time: start)
+            return nil
+        }
+        let coarseEnd = CACurrentMediaTime()
         let fine = readFine()
-        // The fine value lags while moving; trust it only when it agrees with the fresh whole-degree reading.
+        let end = CACurrentMediaTime()
+        nextID &+= 1
+        // Legacy selection retained for A/B replay. Calibration found that fine can lead coarse;
+        // the active tracker therefore prefers valid fine readings without this switching rule.
         let fused: Double
         if let fine, abs(fine - coarse) <= 1.0 { fused = fine } else { fused = coarse }
-        return Sample(coarse: coarse, fine: fine, fused: fused)
+        TrackingTrace.shared.record("sensor", id: nextID, time: start,
+                                    values: [coarse, fine ?? .nan, fused, coarseEnd, end])
+        return Sample(id: nextID, time: end, coarse: coarse, fine: fine, fused: fused)
     }
 
     func start(hz: Double = 60) {
@@ -62,9 +83,13 @@ final class LidAngleSensor {
         t.setEventHandler { [weak self] in
             guard let self, let s = self.readSample() else { return }
             // Deadband: ignore the ±0.08° flicker of the fine report at rest.
-            guard abs(s.fused - self.lastFused) >= 0.1 else { return }
-            self.lastFused = s.fused
-            DispatchQueue.main.async { self.onSample?(s); self.onAngle?(s.fused) }
+            let changed = abs(s.fused - self.lastFused) >= 0.1
+            if changed { self.lastFused = s.fused }
+            DispatchQueue.main.async {
+                TrackingTrace.shared.record("sensor_main", id: s.id, values: [s.time, changed ? 1 : 0])
+                self.onSample?(s)
+                if changed { self.onAngle?(s.fused) }
+            }
         }
         t.resume()
         timer = t

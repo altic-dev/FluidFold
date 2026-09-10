@@ -11,13 +11,8 @@ struct DuofyApp: App {
 
     var body: some Scene {
         MenuBarExtra("Duofy", systemImage: "laptopcomputer") {
-            Text(state.controller.sensorAvailable
-                 ? "Lid angle: \(Int(state.controller.angle))°"
-                 : "No hinge sensor on this Mac")
+            TrackingMenu(controller: state.controller)
             Divider()
-            ControllerTogglesInner(controller: state.controller)
-            Divider()
-            Button("Preview on screen") { state.controller.simulateClose() }.keyboardShortcut("p")
             Button("Settings…") {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
@@ -35,5 +30,23 @@ struct ControllerTogglesInner: View {
     var body: some View {
         Toggle("Enabled", isOn: $controller.isEnabled)
         Toggle("Paused", isOn: $controller.isPaused)
+    }
+}
+
+struct TrackingMenu: View {
+    @ObservedObject var controller: EffectController
+
+    var body: some View {
+        Text(controller.sensorAvailable ? String(format: "Lid angle: %.2f°", controller.angle) : "No hinge sensor on this Mac")
+        Text(controller.trackingStatus)
+        Divider()
+        ControllerTogglesInner(controller: controller)
+        Divider()
+        Button(controller.isLivePreview ? "End live lid preview" : "Live lid preview") {
+            if controller.isLivePreview { controller.endLivePreview() }
+            else { controller.beginLivePreview() }
+        }
+        .keyboardShortcut("p")
+        .disabled(!controller.sensorAvailable || !controller.isEnabled || controller.isPaused)
     }
 }

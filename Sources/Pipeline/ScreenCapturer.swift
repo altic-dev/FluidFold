@@ -5,7 +5,7 @@ import AppKit
 
 /// Streams the built-in display (excluding this app's own windows) as BGRA pixel buffers.
 final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
-    var onFrame: ((CVPixelBuffer) -> Void)?
+    var onFrame: ((CVPixelBuffer, Double) -> Void)?
     var onStopped: (() -> Void)?
     private var stream: SCStream?
     private var starting = false
@@ -43,6 +43,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     func start(fps: Int = 60) async {
         guard stream == nil, !starting else { return }
         starting = true
+        TrackingTrace.shared.record("capture_start")
         defer { starting = false }
         guard let (filter, display) = try? await Self.filter() else { return }
         let cfg = SCStreamConfiguration()
@@ -57,6 +58,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
             try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
             try await s.startCapture()
             stream = s
+            TrackingTrace.shared.record("capture_ready")
         } catch {
             dlog("capture start failed: \(error)")
         }
@@ -73,7 +75,8 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let statusRaw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: statusRaw) == .complete,
               let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        onFrame?(pb)
+        TrackingTrace.shared.record("capture_frame", values: [CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds])
+        onFrame?(pb, CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {

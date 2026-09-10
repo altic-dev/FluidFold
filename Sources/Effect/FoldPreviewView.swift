@@ -12,6 +12,7 @@ struct FoldPreviewView: NSViewRepresentable {
         let v = FoldMetalView(renderer: renderer)
         v.renderScale = 2
         context.coordinator.observer = NotificationCenter.default.addObserver(forName: .foldShaderReloaded, object: nil, queue: .main) { [weak v] _ in
+            v?.renderer.reloadShader()
             v?.requestRender()
         }
         return v

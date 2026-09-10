@@ -19,7 +19,7 @@ Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
 
 ## Using it
 
-- Menu bar icon → **Preview on screen** runs a simulated lid sweep (no need to close the lid).
+- Menu bar icon → **Live lid preview** anchors the effect at the current lid angle. Lower the lid to fold; hold it still to hold the fold; reopen to reverse. There is no autoplay.
 - Click the screen or press Esc to pause until the lid is reopened.
 - Settings: Appearance (style, live preview, sliders), General (trigger angles, sound, login item), Tuning.
 
@@ -28,8 +28,10 @@ Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
 Frosted-glass reprojection, adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation):
 the desktop stays on the plane where the screen was when the effect started, the eye stays put, and only the
 glass (the lid) rotates about the bottom hinge. Each pixel casts a ray from the eye through the tilted glass to the
-desktop plane, samples there, and blurs/darkens in proportion to the glass-to-plane gap. The sensor angle is
-smoothed with a critically damped spring so the picture settles instead of stepping.
+desktop plane, samples there, and blurs/darkens in proportion to the glass-to-plane gap. The sensor uses its fine-angle report with a calibrated 0.20° resting deadband. Each accepted reading
+sets the fold position directly; there is no playback timer, spring, interpolation, or prediction.
+Capture refreshes the live desktop without advancing the fold. Metal drawable acquisition and encoding run on a dedicated
+queue with a bounded, latest-request policy. Settings previews have separate renderers.
 
 ## Tuning the graphics (the part meant to be iterated on)
 
@@ -49,7 +51,8 @@ Workflow:
    (the picker grants file access). Save the file and the app reloads it instantly; compile errors show in the panel.
 3. Happy? **Copy JSON** and paste the values into the presets in `FoldParams.swift`.
 
-Key knobs: `eyeDistanceMM` (perspective), `blurSpread` (blur per px of gap), `rampDegrees` (ease-in of the frost), `darkening` + `minLight`, `frost`, `sheen`, `vignette`. Responsiveness: `EffectController.smoothing` (spring stiffness) and `prewarmDegrees`.
+Key knobs: `eyeDistanceMM` (perspective), `blurSpread` (blur per px of gap), `rampDegrees` (ease-in of the frost), `darkening` + `minLight`, `frost`, `sheen`, `vignette`. Responsiveness: `LidTracker.Configuration` (resting deadband) and `EffectController.prewarmDegrees`.
+See `TRACKING.md` for the measured calibration, diagnostic schema, and remaining latency limits.
 
 Adding a uniform: add a field to `FoldParams`, to `FoldParams.Uniforms`, and to `FoldUniforms` in the `.metal` file (same order, 16-byte aligned).
 
