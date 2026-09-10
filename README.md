@@ -1,4 +1,4 @@
-# Duofy
+# Hinge
 
 Lightweight macOS menu bar app that animates your desktop as the MacBook lid closes
 (a recreation of [Bendy](https://trybendy.app)). Reads the hinge angle from the built-in
@@ -8,7 +8,7 @@ Nothing is recorded or uploaded. macOS 15.2+ (needs the rect screenshot API), Ap
 ## Build & run
 
 ```bash
-./build_dev.sh          # xcodegen → xcodebuild (Release) → /Applications/Duofy.app → launch
+./build_dev.sh          # xcodegen → xcodebuild (Release) → /Applications/Hinge.app → launch
 ```
 
 - Requires a full Xcode in `/Applications` (picked automatically) and `brew install xcodegen`.
@@ -16,14 +16,14 @@ Nothing is recorded or uploaded. macOS 15.2+ (needs the rect screenshot API), Ap
   `.example` file to change identity.
 - Env knobs: `CONFIGURATION=Debug`, `INSTALL_APP=0`, `LAUNCH_APP=0`.
 - Release: `./build_and_notarize.sh` → universal (arm64 + x86_64) app signed with Developer ID, notarized and
-  stapled, packaged as `build/release/Duofy-<version>.dmg`. Needs the `notarize` notarytool profile.
+  stapled, packaged as `build/release/Hinge-<version>.dmg`. Needs the `notarize` notarytool profile.
 - First launch asks for Screen Recording. Grant it, then relaunch.
 
 ## Using it
 
 - Menu bar icon → **Live lid preview** anchors the effect at the current lid angle. Lower the lid to fold; hold it still to hold the fold; reopen to reverse. There is no autoplay.
 - Click the screen or press Esc to pause until the lid is reopened.
-- Settings: Appearance (style, live preview, sliders), General (trigger angles, sound, login item), Tuning.
+- Settings: Appearance (style, live preview, sliders), General (trigger angles, login item), Tuning.
 
 ## How the effect works
 
@@ -62,7 +62,7 @@ desktop plane and blurs/darkens in proportion to the glass-to-plane gap.
 
 ## Smoothness reports (always on)
 
-Every fold writes a report to `~/Library/Logs/Duofy/folds.log` and a per-frame CSV to `~/Library/Logs/Duofy/folds/`:
+Every fold writes a report to `~/Library/Logs/Hinge/folds.log` and a per-frame CSV to `~/Library/Logs/Hinge/folds/`:
 
 ```
 fold #131  2.73 s  lid 86.1° → 20.0° → 105.0°  readings 16  on screen 195 (71 fps)  never shown 1
@@ -114,9 +114,9 @@ Note: MTKView presents stale surfaces on macOS 27 beta, so `FoldMetalView` drive
 
 ```bash
 scripts/trace_tracking.sh && scripts/sweep.sh && python3 scripts/analyze_sweep.py   # raw per-frame trace
-defaults write com.altic.Duofy debugHUD -bool true        # on-screen frame / sensor readout (costs frames)
-defaults write com.altic.Duofy debugLog -bool true        # ~/Library/Logs/Duofy.log
-defaults write com.altic.Duofy debugDumpDir "$PWD/build"  # writes build/duofy_frame.png at mid-sweep
+defaults write com.altic.Hinge debugHUD -bool true        # on-screen frame / sensor readout (costs frames)
+defaults write com.altic.Hinge debugLog -bool true        # ~/Library/Logs/Hinge.log
+defaults write com.altic.Hinge debugDumpDir "$PWD/build"  # writes build/hinge_frame.png at mid-sweep
 ./scripts/preview.sh
 ```
 

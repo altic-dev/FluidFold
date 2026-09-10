@@ -12,7 +12,7 @@ final class TrackingTrace {
         let values: [Double]
     }
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "duofy.trace", qos: .utility)
+    private let queue = DispatchQueue(label: "hinge.trace", qos: .utility)
     private var events: [Event] = []
     private var deadline: Double = 0
     private var dropped = 0
@@ -27,7 +27,7 @@ final class TrackingTrace {
         queue.async { [self] in
             flush()
             try? file?.close()
-            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DuofyTracking")
+            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/HingeTracking")
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let name = "tracking-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(6)).csv"
             let url = dir.appendingPathComponent(name)

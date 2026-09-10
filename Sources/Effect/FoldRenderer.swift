@@ -61,7 +61,7 @@ final class FoldRenderer: NSObject {
     private let startTime = CACurrentMediaTime()
     /// One encode/GPU submission at a time; a single pending request always uses the newest inputs.
     private let inflight = DispatchSemaphore(value: max(1, min(3, UserDefaults.standard.integer(forKey: "expInflight").nonZeroOr(3))))
-    private let renderQueue = DispatchQueue(label: "duofy.render", qos: .userInteractive)
+    private let renderQueue = DispatchQueue(label: "hinge.render", qos: .userInteractive)
     private var pendingLayer: CAMetalLayer?
     private(set) var droppedFrames = 0
     private var fpsCount = 0
@@ -359,7 +359,7 @@ final class FoldRenderer: NSObject {
             let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
             guard let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: bpr, space: cs, bitmapInfo: info.rawValue),
                   let img = ctx.makeImage() else { return }
-            let url = URL(fileURLWithPath: dir).appendingPathComponent("duofy_frame.png")
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("hinge_frame.png")
             if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
                 CGImageDestinationAddImage(dest, img, nil); CGImageDestinationFinalize(dest)
                 dlog("dumped frame to \(url.path)")

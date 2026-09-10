@@ -1,16 +1,16 @@
 import Foundation
 import os
 
-private let logQueue = DispatchQueue(label: "duofy.log", qos: .utility)
+private let logQueue = DispatchQueue(label: "hinge.log", qos: .utility)
 
 /// Low-frequency diagnostics only. High-frequency measurements use the buffered TrackingTrace.
 func dlog(_ message: @autoclosure () -> String) {
     let m = message()
-    Logger(subsystem: "com.altic.Duofy", category: "app").log("\(m, privacy: .public)")
+    Logger(subsystem: "com.altic.Hinge", category: "app").log("\(m, privacy: .public)")
     guard UserDefaults.standard.bool(forKey: "debugLog") else { return }
     let time = Date()
     logQueue.async {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Duofy.log")
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Hinge.log")
         let line = "\(time) \(m)\n"
         if let h = try? FileHandle(forWritingTo: url) {
             h.seekToEndOfFile(); h.write(Data(line.utf8)); h.closeFile()

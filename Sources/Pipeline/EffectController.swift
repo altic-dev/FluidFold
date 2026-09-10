@@ -14,7 +14,6 @@ final class EffectController: ObservableObject {
 
     var startAngle: Double = 95 { didSet { evaluate() } }
     var endAngle: Double = 25 { didSet { evaluate() } }
-    var soundEnabled = true
     var prewarmDegrees: Double = 10
 
     let renderer: FoldRenderer
@@ -60,7 +59,7 @@ final class EffectController: ObservableObject {
     private var framesShownThisFold = 0
     private var foldStartTime: Double = 0
     private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
-    /// Always-on per-fold smoothness report: ~/Library/Logs/Duofy/folds.log
+    /// Always-on per-fold smoothness report: ~/Library/Logs/Hinge/folds.log
     let recorder = FoldRecorder()
     // Start-up timing, reported with each fold.
     private var captureRequestedAt: Double?
@@ -222,11 +221,11 @@ final class EffectController: ObservableObject {
             self.receive(sample)
         }
         // Debug: `scripts/sweep.sh` runs a fake lid sweep in-process at the real sensor cadence (10 Hz).
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.sweep"), object: nil, queue: .main) { [weak self] note in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Hinge.sweep"), object: nil, queue: .main) { [weak self] note in
             let seconds = (note.object as? String).flatMap(Double.init) ?? 1.5
             self?.runFakeSweep(secondsPerDirection: seconds)
         }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.inject"), object: nil, queue: .main) { [weak self] note in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Hinge.inject"), object: nil, queue: .main) { [weak self] note in
             guard let self, let value = (note.object as? String).flatMap(Double.init) else { return }
             self.injectingUntil = CACurrentMediaTime() + 1.5
             self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: value.rounded(), fine: value, fused: value))
@@ -495,8 +494,7 @@ final class EffectController: ObservableObject {
         if d.atRest {
             if hideWhenSettled && playhead < 0.5 {
                 hideWhenSettled = false
-                let opened = active && minAngleSeen < startAngle - 10
-                hideOverlay(playSound: opened)
+                hideOverlay()
                 return
             }
             if hideWhenSettled {
@@ -584,7 +582,7 @@ final class EffectController: ObservableObject {
         ensureDisplayLink()
     }
 
-    private func hideOverlay(playSound: Bool) {
+    private func hideOverlay() {
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
         dlog(String(format: "fold done: %.2fs, %d frames drawn, timeline %d frames", CACurrentMediaTime() - foldStartTime, framesShownThisFold, timeline.frameCount))
         recorder.end(at: CACurrentMediaTime())
@@ -597,7 +595,6 @@ final class EffectController: ObservableObject {
         hideWhenSettled = false
         stopDisplayLink()
         overlay.hide()
-        if playSound && soundEnabled { SoundPlayer.click() }
     }
 
     private func userDismissed() {
@@ -605,15 +602,12 @@ final class EffectController: ObservableObject {
         isLivePreview = false
         armed = false
         pendingShow = false
-        if isShowing { hideOverlay(playSound: false) }
+        if isShowing { hideOverlay() }
         capturer.stop()
         hasFrame = false
     }
 }
 
-enum SoundPlayer {
-    static func click() { NSSound(named: "Tink")?.play() }
-}
 
 private extension Double {
     var nonZero: Double? { self == 0 ? nil : self }

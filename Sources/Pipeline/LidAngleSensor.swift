@@ -78,7 +78,7 @@ final class LidAngleSensor {
 
     func start(hz: Double = 60) {
         stop()
-        let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "duofy.lid", qos: .userInteractive))
+        let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hinge.lid", qos: .userInteractive))
         t.schedule(deadline: .now(), repeating: 1.0 / hz)
         t.setEventHandler { [weak self] in
             guard let self, let s = self.readSample() else { return }

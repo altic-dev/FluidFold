@@ -4,8 +4,8 @@ import AppKit
 /// Records every fold end to end and writes a smoothness report, so stutter can be diagnosed from numbers.
 ///
 /// Output (always on, bounded):
-///   ~/Library/Logs/Duofy/folds.log          one report block per fold, newest last
-///   ~/Library/Logs/Duofy/folds/fold-N.csv   one row per on-screen frame (last 30 folds kept)
+///   ~/Library/Logs/Hinge/folds.log          one report block per fold, newest last
+///   ~/Library/Logs/Hinge/folds/fold-N.csv   one row per on-screen frame (last 30 folds kept)
 ///
 /// A fold is split into three phases: start (first 300 ms), middle, end (last 300 ms).
 /// Smooth means: while the playhead is moving, every display refresh shows a new frame.
@@ -31,7 +31,7 @@ final class FoldRecorder {
     private var notes: [String] = []
     private let cap = 20_000
 
-    static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Duofy")
+    static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Hinge")
 
     func begin(now: Double, timelineFrames: Int, degreesPerFrame: Double, angle: Double) {
         if active { finish(at: now) }

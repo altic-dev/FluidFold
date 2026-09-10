@@ -1,4 +1,4 @@
-name: Duofy
+name: Hinge
 options:
   bundleIdPrefix: com.altic
   deploymentTarget:
@@ -15,7 +15,7 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 targets:
-  Duofy:
+  Hinge:
     type: application
     platform: macOS
     sources:
@@ -25,29 +25,29 @@ targets:
         type: folder
         buildPhase: resources
     entitlements:
-      path: Duofy.entitlements
+      path: Hinge.entitlements
       properties:
         com.apple.security.cs.disable-library-validation: false
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Duofy
+        CFBundleDisplayName: Hinge
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true
         LSMinimumSystemVersion: "15.2"
-        NSScreenCaptureUsageDescription: Duofy captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
+        NSScreenCaptureUsageDescription: Hinge captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
         NSHumanReadableCopyright: Copyright © 2026 Altic
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Duofy
-        PRODUCT_NAME: Duofy
-        CODE_SIGN_ENTITLEMENTS: Duofy.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Hinge
+        PRODUCT_NAME: Hinge
+        CODE_SIGN_ENTITLEMENTS: Hinge.entitlements
         SWIFT_OPTIMIZATION_LEVEL: "-O"
 schemes:
-  Duofy:
+  Hinge:
     build:
       targets:
-        Duofy: all
+        Hinge: all
     run:
       config: Release

@@ -55,7 +55,7 @@ struct TuningPanel: View {
                     .textSelection(.enabled)
             }
             Section("Performance") {
-                Text("Overlay render: \(Int(renderer.measuredFPS)) fps, \(renderer.droppedFrames) dropped. GPU \(String(format: "%.1f", renderer.gpuMs)) ms/frame. `defaults write com.altic.Duofy renderScale 1` halves the cost.")
+                Text("Overlay render: \(Int(renderer.measuredFPS)) fps, \(renderer.droppedFrames) dropped. GPU \(String(format: "%.1f", renderer.gpuMs)) ms/frame. `defaults write com.altic.Hinge renderScale 1` halves the cost.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary) }

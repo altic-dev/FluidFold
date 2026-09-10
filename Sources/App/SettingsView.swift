@@ -97,7 +97,6 @@ struct GeneralTab: View {
                 Text("Click the screen or press Esc to pause until the lid is reopened.").font(.caption).foregroundStyle(.secondary)
             }
             Section("General") {
-                Toggle("Soft click when the lid opens", isOn: $state.soundEnabled)
                 Toggle("Launch at login", isOn: Binding(get: { state.launchAtLogin }, set: { state.launchAtLogin = $0 }))
                 ControllerTogglesInner(controller: state.controller)
             }

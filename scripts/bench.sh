@@ -3,8 +3,8 @@
 # Usage: scripts/bench.sh "label" [n] [-- key value ...]
 # Run it detached (nohup … &) so the terminal/Claude window is idle while it measures.
 LABEL="$1"; N="${2:-3}"; shift 2 2>/dev/null; [ "$1" = "--" ] && shift
-while [ $# -ge 2 ]; do defaults write com.altic.Duofy "$1" "$2"; shift 2; done
-killall Duofy 2>/dev/null; sleep 1; open /Applications/Duofy.app; sleep 3
+while [ $# -ge 2 ]; do defaults write com.altic.Hinge "$1" "$2"; shift 2; done
+killall Hinge 2>/dev/null; sleep 1; open /Applications/Hinge.app; sleep 3
 for i in $(seq 1 "$N"); do "$(dirname "$0")/sweep.sh" 0.9; sleep "${GAP:-5}"; done
 "$(dirname "$0")/last_fold.sh" "$N" | awk -v L="$LABEL" '
   /start  /{match($0,/irregular +[0-9]+/); a+=substr($0,RSTART+10,RLENGTH-10); match($0,/missed +[0-9]+/); am+=substr($0,RSTART+7,RLENGTH-7)}

@@ -43,7 +43,7 @@ final class OverlayWindow: NSWindow {
         }
     }
 
-    /// Debug readout (frame, sensor sample, angles). Shown only with `defaults write com.altic.Duofy debugHUD -bool true`.
+    /// Debug readout (frame, sensor sample, angles). Shown only with `defaults write com.altic.Hinge debugHUD -bool true`.
     private let hudLabel: NSTextField = {
         let l = NSTextField(labelWithString: "")
         l.font = .monospacedSystemFont(ofSize: 13, weight: .medium)

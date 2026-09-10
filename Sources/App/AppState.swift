@@ -12,7 +12,6 @@ final class AppState: ObservableObject {
     @AppStorage("customParams") private var customParamsJSON: String = ""
     @AppStorage("startAngle") var startAngle: Double = 95 { didSet { controller.startAngle = startAngle } }
     @AppStorage("endAngle") var endAngle: Double = 25 { didSet { controller.endAngle = endAngle } }
-    @AppStorage("soundEnabled") var soundEnabled: Bool = true { didSet { controller.soundEnabled = soundEnabled } }
     @AppStorage("followSensor") var followSensor: Bool = true
     @AppStorage("manualAngle") var manualAngle: Double = 60
 
@@ -36,7 +35,7 @@ final class AppState: ObservableObject {
     init() {
         controller = EffectController(renderer: renderer)
         if UserDefaults.standard.bool(forKey: "trackingTrace") { TrackingTrace.shared.start() }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.trace"), object: nil, queue: .main) { _ in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Hinge.trace"), object: nil, queue: .main) { _ in
             TrackingTrace.shared.start()
         }
         if let data = customParamsJSON.data(using: .utf8), let p = try? JSONDecoder().decode(FoldParams.self, from: data) {
@@ -46,10 +45,9 @@ final class AppState: ObservableObject {
         }
         controller.startAngle = startAngle
         controller.endAngle = endAngle
-        controller.soundEnabled = soundEnabled
         renderer.params = params
         // Dev hook: starts the same sensor-driven preview as the menu item.
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.preview"), object: nil, queue: .main) { [weak self] _ in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Hinge.preview"), object: nil, queue: .main) { [weak self] _ in
             self?.controller.beginLivePreview()
         }
     }
