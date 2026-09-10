@@ -25,8 +25,13 @@ final class EffectController: ObservableObject {
         return w
     }()
     private var armed = true
-    private var wasClosing = false
     private var minAngleSeen: Double = 180
+    /// Smoothed angle driving the render; the sensor is quantized to whole degrees at ~30 Hz.
+    private var smoothedAngle: Double = 120
+    private var angleVelocity: Double = 0
+    private var frameTimer: Timer?
+    private var lastFrameTime = CACurrentMediaTime()
+    var smoothing: Double = 14   // spring stiffness-ish; higher = snappier
 
     init(renderer: FoldRenderer) {
         self.renderer = renderer
@@ -84,12 +89,28 @@ final class EffectController: ObservableObject {
         if shouldShow {
             if !isShowing { showOverlay() }
             minAngleSeen = min(minAngleSeen, a)
-            renderer.progress = progress(for: a)
-            overlay.metalView.requestRender()
         } else if isShowing {
             let opened = a >= startAngle && minAngleSeen < startAngle - 10
             hideOverlay(playSound: opened)
         }
+    }
+
+    /// Critically damped spring toward the sensor angle, then render.
+    private func tick() {
+        let now = CACurrentMediaTime()
+        let dt = min(now - lastFrameTime, 1.0 / 20)
+        lastFrameTime = now
+        let k = smoothing
+        let accel = k * k * (angle - smoothedAngle) - 2 * k * angleVelocity
+        angleVelocity += accel * dt
+        smoothedAngle += angleVelocity * dt
+        applyAngle(smoothedAngle)
+    }
+
+    private func applyAngle(_ a: Double) {
+        renderer.progress = progress(for: a)
+        renderer.tiltDegrees = max(startAngle - a, 0)
+        overlay.metalView.requestRender()
     }
 
     private func showOverlay() {
@@ -98,14 +119,20 @@ final class EffectController: ObservableObject {
         renderer.resetDump()
         minAngleSeen = angle
         renderer.clearSource()
-        renderer.progress = progress(for: angle)
+        smoothedAngle = angle
+        angleVelocity = 0
+        applyAngle(smoothedAngle)
         overlay.show()
+        lastFrameTime = CACurrentMediaTime()
+        frameTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(frameTimer!, forMode: .common)
         if !UserDefaults.standard.bool(forKey: "debugClearOnly") { Task { await capturer.start() } }
     }
 
     private func hideOverlay(playSound: Bool) {
         guard isShowing else { return }
         isShowing = false
+        frameTimer?.invalidate(); frameTimer = nil
         capturer.stop()
         overlay.hide()
         renderer.clearSource()

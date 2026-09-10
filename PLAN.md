@@ -22,8 +22,8 @@ Contract between Pipeline and Effect: `renderer.setSource(pixelBuffer:)`, `rende
 | M1 | Effect module: params struct + 3 presets, runtime shader with file-watch hot reload, tuning panel with a slider per uniform, preset JSON copy/paste | done |
 | M2 | Pipeline: hinge sensor polling, display capture excluding own windows, shielding-level overlay window, controller with start/end angles, pause (click / Esc) | done |
 | M3 | App shell: menu bar extra, Settings with live MacBook preview + lid slider, sound click, launch at login | done |
-| M4 | First install + verify on this MacBook: permission granted, simulated sweep renders (frame dump verified), real lid close/open still to be tried by hand | done (needs manual lid test) |
-| M5 | Graphics tuning loop: edit `.metal` / sliders → ship defaults into `FoldParams` presets | next |
+| M4 | First install + verify: permission granted, overlay verified on the real screen via simulated sweep (MTKView bug on macOS 27 beta worked around) | done |
+| M5 | Physically based effect: frosted-glass reprojection (ported from DuoLikeAnimation), spring-smoothed sensor. Tune presets via Tuning panel | in progress |
 | Later | Developer ID + notarization + DMG (needs Barath's Developer ID cert), licensing (skipped for personal build) | later |
 
 ## Tuning workflow (M5)

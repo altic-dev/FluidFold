@@ -49,6 +49,11 @@ struct MacBookPreview: View {
 
 struct AppearanceTab: View {
     @EnvironmentObject var state: AppState
+    /// 0 = far eye (flat), 1 = close eye (strong perspective)
+    private var perspective: Binding<Double> {
+        Binding(get: { 1 - (state.params.eyeDistanceMM - 250) / 1000 },
+                set: { state.params.eyeDistanceMM = 250 + (1 - $0) * 1000 })
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -63,9 +68,9 @@ struct AppearanceTab: View {
                     Slider(value: $state.manualAngle, in: 0...130).disabled(state.followSensor)
                     Text("\(Int(state.previewAngle))°").monospacedDigit().frame(width: 40)
                 }
-                HStack { Text("Perspective"); Slider(value: $state.params.perspective, in: 0...1) }
-                HStack { Text("Blur"); Slider(value: $state.params.blur, in: 0...1) }
-                HStack { Text("Shadow"); Slider(value: $state.params.shadow, in: 0...1) }
+                HStack { Text("Perspective"); Slider(value: perspective, in: 0...1) }
+                HStack { Text("Blur"); Slider(value: $state.params.blurSpread, in: 0...0.3) }
+                HStack { Text("Shadow"); Slider(value: $state.params.darkening, in: 0...0.04) }
             }
             .formStyle(.grouped)
         }

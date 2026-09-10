@@ -26,6 +26,7 @@ struct FoldPreviewView: NSViewRepresentable {
         }
         renderer.params = params
         renderer.progress = progress
+        renderer.tiltDegrees = nil
         view.requestRender()
     }
 

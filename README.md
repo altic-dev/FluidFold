@@ -23,6 +23,14 @@ Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
 - Click the screen or press Esc to pause until the lid is reopened.
 - Settings: Appearance (style, live preview, sliders), General (trigger angles, sound, login item), Tuning.
 
+## How the effect works
+
+Frosted-glass reprojection, adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation):
+the desktop stays on the plane where the screen was when the effect started, the eye stays put, and only the
+glass (the lid) rotates about the bottom hinge. Each pixel casts a ray from the eye through the tilted glass to the
+desktop plane, samples there, and blurs/darkens in proportion to the glass-to-plane gap. The sensor angle is
+smoothed with a critically damped spring so the picture settles instead of stepping.
+
 ## Tuning the graphics (the part meant to be iterated on)
 
 Everything visual lives in `Sources/Effect` and knows nothing about lids or capture:
@@ -41,7 +49,11 @@ Workflow:
    (the picker grants file access). Save the file and the app reloads it instantly; compile errors show in the panel.
 3. Happy? **Copy JSON** and paste the values into the presets in `FoldParams.swift`.
 
-Adding a uniform: add a field to `FoldParams`, to `FoldParams.Uniforms`, and to `FoldUniforms` in the `.metal` file (same order).
+Key knobs: `eyeDistanceMM` (perspective), `blurSpread` (blur per px of gap), `darkening`, `frost`, `sheen`, `vignette`.
+
+Adding a uniform: add a field to `FoldParams`, to `FoldParams.Uniforms`, and to `FoldUniforms` in the `.metal` file (same order, 16-byte aligned).
+
+Note: MTKView presents stale surfaces on macOS 27 beta, so `FoldMetalView` drives a `CAMetalLayer` directly.
 
 ## Debugging
 
@@ -51,7 +63,7 @@ defaults write com.altic.Duofy debugDumpDir "$PWD/build"  # writes build/duofy_f
 ./scripts/preview.sh
 ```
 
-Screenshots of the overlay via `screencapture` come back blank (shielding-level window), so use the frame dump.
+`scripts/preview.sh` + `screencapture -x` captures the real overlay for review.
 
 ## Layout
 

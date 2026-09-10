@@ -15,21 +15,20 @@ struct TuningPanel: View {
             Section("Progress") {
                 slider("Progress", $progress, 0...1)
             }
-            Section("Geometry") {
-                slider("Max tilt °", $params.maxTiltDegrees, 0...90)
-                slider("Perspective", $params.perspective, 0...1)
-                slider("Shrink", $params.shrink, 0...0.5)
-                slider("Drop", $params.drop, 0...0.5)
-                slider("Easing", $params.easing, 0.3...3)
+            Section("Physical model") {
+                slider("Max tilt °", $params.maxTiltDegrees, 0...110)
+                slider("Eye dist mm", $params.eyeDistanceMM, 200...1500)
+                slider("Points/mm", $params.pointsPerMM, 2...8)
+                slider("Blur spread", $params.blurSpread, 0...0.4)
+                slider("Darkening", $params.darkening, 0...0.05)
                 slider("Hinge (0=bottom)", $params.hinge, 0...1)
+                slider("Max taps", $params.maxTaps, 6...64)
             }
-            Section("Look") {
-                slider("Blur", $params.blur, 0...1)
-                slider("Max blur LOD", $params.maxBlurLod, 0...8)
-                slider("Shadow", $params.shadow, 0...1)
-                slider("Vignette", $params.vignette, 0...1)
-                slider("Sheen", $params.sheen, 0...1)
+            Section("Cosmetics") {
                 slider("Frost", $params.frost, 0...1)
+                slider("Sheen", $params.sheen, 0...1)
+                slider("Vignette", $params.vignette, 0...1)
+                slider("Easing", $params.easing, 0.3...3)
             }
             Section("Presets") {
                 HStack {

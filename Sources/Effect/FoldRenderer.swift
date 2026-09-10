@@ -13,6 +13,10 @@ final class FoldRenderer: NSObject {
     let device: MTLDevice
     var params: FoldParams = .silk
     var progress: Double = 0
+    /// Physical degrees closed since the effect started. nil = derive from progress (preview).
+    var tiltDegrees: Double?
+    /// Points-per-pixel scale of the target (2 on Retina). Set by the view.
+    var contentsScale: Double = 2
     private(set) var shaderError: String?
 
     private let queue: MTLCommandQueue
@@ -165,9 +169,8 @@ final class FoldRenderer: NSObject {
         pass.colorAttachments[0].clearColor = clearOnly ? MTLClearColor(red: 1, green: 0, blue: 0, alpha: 1) : MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         if let enc = cmd.makeRenderCommandEncoder(descriptor: pass) {
             if !clearOnly, let pipeline, let tex = mipTexture {
-                var u = params.uniforms(progress: progress,
-                                        aspect: Double(drawableSize.width / max(drawableSize.height, 1)),
-                                        time: CACurrentMediaTime() - startTime)
+                var u = params.uniforms(progress: progress, tiltDegrees: tiltDegrees, size: drawableSize,
+                                        scale: Double(layer.contentsScale), time: CACurrentMediaTime() - startTime)
                 enc.setRenderPipelineState(pipeline)
                 enc.setVertexBytes(&u, length: MemoryLayout<FoldParams.Uniforms>.stride, index: 0)
                 enc.setFragmentBytes(&u, length: MemoryLayout<FoldParams.Uniforms>.stride, index: 0)

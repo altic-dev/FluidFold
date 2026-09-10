@@ -2,60 +2,62 @@ import Foundation
 import simd
 
 /// Every tunable of the fold effect. Edit defaults here or from the Tuning panel.
-/// Changing this struct: also update `FoldUniforms` in FoldEffect.metal and `uniforms(progress:aspect:time:)`.
+/// Changing this struct: also update `FoldUniforms` in FoldEffect.metal and `uniforms(...)`.
 struct FoldParams: Codable, Equatable {
-    var maxTiltDegrees: Double = 68      // tilt of the panel at progress 1
-    var perspective: Double = 0.45       // 0 = flat, 1 = extreme
-    var blur: Double = 0.8               // 0..1 scale of max mip level
-    var shadow: Double = 0.6             // 0..1
-    var frost: Double = 0                // 0..1
-    var sheen: Double = 0.4              // 0..1
-    var vignette: Double = 0.3           // 0..1
-    var shrink: Double = 0.06            // 0..1, panel shrink at progress 1
-    var drop: Double = 0.08              // 0..1, panel drop at progress 1
-    var easing: Double = 1.4             // progress exponent (1 = linear)
-    var maxBlurLod: Double = 6           // mip levels at blur 1
-    var hinge: Double = 0                // pivot edge: 0 = bottom (MacBook lid), 1 = top
+    // Physical model
+    var eyeDistanceMM: Double = 550      // viewer to screen, head-on
+    var pointsPerMM: Double = 4.4        // 14" MacBook Pro: 1512 pt / ~344 mm
+    var blurSpread: Double = 0.10        // blur px per px of glass-to-plane gap
+    var darkening: Double = 0.012        // light lost per px of blur radius
+    var maxTiltDegrees: Double = 70      // tilt at progress 1 (preview / manual mode)
+    var hinge: Double = 0                // 0 = bottom edge (laptop), 1 = top
+    var maxTaps: Double = 32             // blur kernel cap
+    // Cosmetics
+    var frost: Double = 0
+    var sheen: Double = 0.25
+    var vignette: Double = 0.2
+    var easing: Double = 1.0             // progress exponent for preview sweeps
 
     static let silk = FoldParams()
-    static let shade = FoldParams(maxTiltDegrees: 60, perspective: 0.35, blur: 0.5, shadow: 0.9, frost: 0, sheen: 0.1, vignette: 0.5)
-    static let frost = FoldParams(maxTiltDegrees: 55, perspective: 0.4, blur: 1.0, shadow: 0.3, frost: 0.35, sheen: 0, vignette: 0.15)
+    static let shade = FoldParams(blurSpread: 0.05, darkening: 0.03, sheen: 0.05, vignette: 0.4)
+    static let frost = FoldParams(blurSpread: 0.2, darkening: 0.006, frost: 0.35, sheen: 0, vignette: 0.1)
 
-    /// Must match the Metal struct layout (14 floats, 56 bytes).
+    /// Must match the Metal struct layout (16 floats, 64 bytes).
     struct Uniforms {
-        var progress: Float
         var tilt: Float
-        var camDist: Float
-        var blurLod: Float
-        var shade: Float
+        var eyeDistance: Float
+        var blurSpread: Float
+        var darkening: Float
         var frost: Float
         var sheen: Float
         var vignette: Float
-        var scale: Float
-        var yOffset: Float
-        var aspect: Float
-        var time: Float
         var hinge: Float
-        var pad0: Float = 0
+        var size: SIMD2<Float>
+        var progress: Float
+        var time: Float
+        var maxTaps: Float
+        var pad0: Float = 0, pad1: Float = 0, pad2: Float = 0
     }
 
-    func uniforms(progress rawProgress: Double, aspect: Double, time: Double) -> Uniforms {
+    /// - progress: 0..1 normalized closing progress (cosmetic terms, and tilt when `tiltDegrees` is nil).
+    /// - tiltDegrees: physical degrees the lid has closed since the effect started.
+    func uniforms(progress rawProgress: Double, tiltDegrees: Double?, size: CGSize, scale: Double, time: Double) -> Uniforms {
         let p = pow(min(max(rawProgress, 0), 1), easing)
-        let camDist = 1.2 + (1 - perspective) * 8.0
+        let tilt = tiltDegrees ?? (p * maxTiltDegrees)
+        let pxPerMM = pointsPerMM * scale
         return Uniforms(
-            progress: Float(p),
-            tilt: Float(p * maxTiltDegrees * .pi / 180),
-            camDist: Float(camDist),
-            blurLod: Float(p * blur * maxBlurLod),
-            shade: Float(shadow),
+            tilt: Float(max(tilt, 0) * .pi / 180),
+            eyeDistance: Float(eyeDistanceMM * pxPerMM),
+            blurSpread: Float(blurSpread),
+            darkening: Float(darkening / scale),
             frost: Float(frost),
             sheen: Float(sheen),
             vignette: Float(vignette),
-            scale: Float(1 - p * shrink),
-            yOffset: Float(p * drop * (hinge > 0.5 ? -1 : 1)),
-            aspect: Float(aspect),
+            hinge: Float(hinge),
+            size: SIMD2(Float(size.width), Float(size.height)),
+            progress: Float(p),
             time: Float(time),
-            hinge: Float(hinge)
+            maxTaps: Float(maxTaps)
         )
     }
 }
