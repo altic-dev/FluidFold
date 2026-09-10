@@ -9,7 +9,9 @@ final class EffectController: ObservableObject {
     @Published private(set) var isShowing = false
     @Published private(set) var isLivePreview = false
     @Published var isPaused = false { didSet { evaluate() } }
-    @Published var isEnabled = true { didSet { evaluate() } }
+    @Published var isEnabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isEnabled, forKey: "enabled"); evaluate() }
+    }
     let sensorAvailable: Bool
 
     var startAngle: Double = 95 { didSet { evaluate() } }

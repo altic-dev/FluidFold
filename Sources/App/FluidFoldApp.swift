@@ -3,61 +3,81 @@ import SwiftUI
 @main
 struct FluidFoldApp: App {
     @StateObject private var state = AppState()
-    @Environment(\.openSettings) private var openSettings
-
-    init() {
-        if !ScreenCapturer.hasPermission() { ScreenCapturer.requestPermission() }
-    }
 
     var body: some Scene {
         MenuBarExtra {
-            TrackingMenu(controller: state.controller)
-            Divider()
-            Button("Settings…") {
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            }.keyboardShortcut(",")
-            Button("Quit FluidFold") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            MenuContent(controller: state.controller, permissions: state.permissions)
         } label: {
-            MenuBarLabel(controller: state.controller)
+            MenuBarLabel(controller: state.controller, permissions: state.permissions)
         }
         Settings {
             SettingsView().environmentObject(state)
         }
-    }
-}
-
-struct ControllerTogglesInner: View {
-    @ObservedObject var controller: EffectController
-    var body: some View {
-        Toggle("Enabled", isOn: $controller.isEnabled)
-        Toggle("Paused", isOn: $controller.isPaused)
-    }
-}
-
-struct TrackingMenu: View {
-    @ObservedObject var controller: EffectController
-
-    var body: some View {
-        Text(controller.sensorAvailable ? String(format: "Lid angle: %.2f°", controller.angle) : "No hinge sensor on this Mac")
-        Text(controller.trackingStatus)
-        Divider()
-        ControllerTogglesInner(controller: controller)
-        Divider()
-        Button(controller.isLivePreview ? "End live lid preview" : "Live lid preview") {
-            if controller.isLivePreview { controller.endLivePreview() }
-            else { controller.beginLivePreview() }
+        Window("Welcome to FluidFold", id: "onboarding") {
+            OnboardingView(permissions: state.permissions).environmentObject(state)
         }
-        .keyboardShortcut("p")
-        .disabled(!controller.sensorAvailable || !controller.isEnabled || controller.isPaused)
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultLaunchBehavior(.suppressed)
+    }
+}
+
+/// The whole menu: one toggle, Settings, Quit. A status line appears only when something needs attention.
+struct MenuContent: View {
+    @ObservedObject var controller: EffectController
+    @ObservedObject var permissions: PermissionsModel
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        if !controller.sensorAvailable {
+            Text("This Mac has no lid sensor")
+            Divider()
+        } else if !permissions.screenRecording {
+            Button("Allow Screen Recording…") {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "onboarding")
+            }
+            Divider()
+        }
+        Toggle("Enabled", isOn: $controller.isEnabled)
+            .disabled(!controller.sensorAvailable)
+        Divider()
+        Button("Settings…") {
+            NSApp.activate(ignoringOtherApps: true)
+            openSettings()
+        }
+        .keyboardShortcut(",")
+        Button("Quit FluidFold") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }
 
 struct MenuBarLabel: View {
     @ObservedObject var controller: EffectController
+    @ObservedObject var permissions: PermissionsModel
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         // Quantize to 5° so the glyph only redraws on real movement.
         let shown = controller.sensorAvailable ? (controller.angle / 5).rounded() * 5 : 100
-        Image(nsImage: MenuBarIcon.image(angleDegrees: shown, paused: controller.isPaused || !controller.isEnabled))
+        Image(nsImage: MenuBarIcon.image(angleDegrees: shown, paused: !controller.isEnabled))
+            // Dev hook (scripts, screenshots): open Settings without clicking the menu.
+            .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.settings"))) { _ in
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            }
+            .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.onboarding"))) { _ in
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "onboarding")
+            }
+            .task {
+                // First run (or permission revoked): show the welcome window instead of a bare system prompt.
+                if !permissions.screenRecording {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "onboarding")
+                }
+            }
     }
 }
