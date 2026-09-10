@@ -1,6 +1,6 @@
 #!/bin/bash
 # FluidFold release build: universal archive, Developer ID signing, notarization, stapling, DMG.
-# Usage: ./build_and_notarize.sh            (env: SKIP_NOTARIZE=1 to only sign)
+# Usage: ./build_and_notarize.sh            (env: SKIP_NOTARIZE=1 to only sign, PUBLISH=1 to create the GitHub release)
 # Prereq (once): xcrun notarytool store-credentials <profile> --apple-id <id> --team-id <TEAMID>
 set -euo pipefail
 
@@ -84,4 +84,10 @@ UPDATES="${BUILD_DIR}/updates"; rm -rf "${UPDATES}"; mkdir -p "${UPDATES}"; cp "
 "${SPARKLE_BIN}/generate_appcast" --account "${APP_NAME}" \
     --download-url-prefix "https://github.com/altic-dev/${APP_NAME}/releases/download/v${VERSION}/" "${UPDATES}" | tail -1
 echo "✅ ${DMG}"
-echo "✅ ${UPDATES}/appcast.xml  (upload both as assets of GitHub release v${VERSION})"
+echo "✅ ${UPDATES}/appcast.xml"
+if [ "${PUBLISH:-0}" = "1" ]; then
+    echo "━━ publish v${VERSION}"
+    gh release view "v${VERSION}" >/dev/null 2>&1 || gh release create "v${VERSION}" --title "${APP_NAME} ${VERSION}" --generate-notes
+    gh release upload "v${VERSION}" --clobber "${UPDATES}/${APP_NAME}-${VERSION}.dmg" "${UPDATES}/appcast.xml"
+    echo "✅ https://github.com/altic-dev/${APP_NAME}/releases/tag/v${VERSION}"
+fi

@@ -27,15 +27,6 @@ cp xcconfig/LocalSigning.example.xcconfig xcconfig/LocalSigning.xcconfig   # you
 ./build_dev.sh                                                             # builds, installs, launches
 ```
 
-Release build (universal, notarized, DMG, Sparkle appcast):
-
-```bash
-cp release.env.example release.env   # Developer ID + notarytool profile
-./build_and_notarize.sh
-```
-
-Then publish a GitHub release `vX.Y.Z` with the DMG and `build/release/updates/appcast.xml` as assets.
-
 ## Code
 
 - `Sources/App` — menu bar, settings, onboarding
