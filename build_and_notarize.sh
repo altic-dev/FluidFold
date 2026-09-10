@@ -1,7 +1,7 @@
 #!/bin/bash
 # FluidFold release build: universal archive, Developer ID signing, notarization, stapling, DMG.
 # Usage: ./build_and_notarize.sh            (env: SKIP_NOTARIZE=1 to only sign)
-# Prereq (once): xcrun notarytool store-credentials notarize --apple-id <id> --team-id TEAMID
+# Prereq (once): xcrun notarytool store-credentials <profile> --apple-id <id> --team-id <TEAMID>
 set -euo pipefail
 
 APP_NAME="FluidFold"
@@ -12,8 +12,10 @@ BUILD_DIR="${PROJECT_DIR}/build/release"
 ARCHIVE_PATH="${BUILD_DIR}/${APP_NAME}.xcarchive"
 EXPORT_PATH="${BUILD_DIR}/Export"
 APP_PATH="${EXPORT_PATH}/${APP_NAME}.app"
-DEVELOPER_ID="${DEVELOPER_ID:-Developer ID Application: Your Name (TEAMID)}"
-TEAM_ID="${TEAM_ID:-TEAMID}"
+# Release identities live in the gitignored release.env (see release.env.example) or the environment.
+[ -f "${PROJECT_DIR}/release.env" ] && source "${PROJECT_DIR}/release.env"
+: "${DEVELOPER_ID:?set DEVELOPER_ID (Developer ID Application: Name (TEAMID)) in release.env}"
+: "${TEAM_ID:?set TEAM_ID in release.env}"
 NOTARIZATION_PROFILE="${NOTARIZATION_PROFILE:-notarize}"
 
 if [ -z "${DEVELOPER_DIR:-}" ] && [[ "$(xcode-select -p)" != *"/Contents/Developer" ]]; then

@@ -1,4 +1,25 @@
+# Build output
 build/
+DerivedData/
+.build/
 *.xcodeproj
 xcuserdata/
+*.dmg
+*.xcarchive
+
+# Local secrets and identities (never commit)
+xcconfig/LocalSigning.xcconfig
+release.env
+*.p12
+*.mobileprovision
+
+# Local scratch
+design/
+lid-calibration/
+*.log
+*.csv
+*.ips
+
+# System
 .DS_Store
+.swiftpm/
