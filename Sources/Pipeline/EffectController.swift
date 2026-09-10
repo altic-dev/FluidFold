@@ -47,6 +47,11 @@ final class EffectController: ObservableObject {
     private var glideToVelocity: Double = 0       // estimated lid speed at the target, frames/s
     private var playheadVelocity: Double = 0
     private var lastTarget: Double = 0
+    private var lastVelocity: Double = 0
+    /// Fraction of a sensor interval to aim ahead of the latest reading while the lid keeps moving.
+    var leadFraction: Double = UserDefaults.standard.double(forKey: "leadFraction").nonZero ?? 0.8
+    /// Glide duration as a multiple of the sensor interval. >1 keeps the playhead moving when the next reading lands.
+    var glideFactor: Double = UserDefaults.standard.double(forKey: "glideFactor").nonZero ?? 1.5
     private var readingInterval: Double = 0.1     // smoothed sensor cadence
     private var shownFrame = -1
     private var lastSampleTime: Double = CACurrentMediaTime()
@@ -323,10 +328,17 @@ final class EffectController: ObservableObject {
             readingInterval = readingInterval * 0.7 + interval * 0.3
             let targetFrame = timeline.playhead(for: target)
             recorder.reading(now: now, angle: target, target: targetFrame)
-            // Lid speed at the target: 0 when the reading repeats (lid stopped), so the glide eases into a stop.
+            // Lid speed from the last two readings (frames/s). 0 when a reading repeats: the lid has stopped.
             let lidVelocity = (targetFrame - lastTarget) / readingInterval
+            let accelerating = abs(lidVelocity) > abs(lastVelocity) * 0.8 && lidVelocity * lastVelocity >= 0
             lastTarget = targetFrame
-            glide(to: targetFrame, endVelocity: lidVelocity, duration: readingInterval * 1.25, now: now)
+            lastVelocity = lidVelocity
+            // Lag reduction: while the lid keeps moving, aim half a sensor interval ahead of the reading (where the
+            // lid will be when the next reading lands), so the picture trails the lid by ~60 ms instead of ~125.
+            // When the lid slows or reverses, aim at the reading itself, so a stop lands exactly on the reading.
+            let lead = accelerating ? lidVelocity * readingInterval * leadFraction : 0
+            let aim = min(max(targetFrame + lead, 0), Double(timeline.frameCount))
+            glide(to: aim, endVelocity: accelerating ? lidVelocity : 0, duration: readingInterval * glideFactor, now: now)
             lastSampleTime = now
             evaluate()
         }
@@ -441,7 +453,9 @@ final class EffectController: ObservableObject {
     private var recentLatencies: [Double] = []
     private(set) var composited = false
     private var tickParity = 0
-    private let adaptiveEnabled = !UserDefaults.standard.bool(forKey: "expNoAdaptive")
+    /// Off by default: with rect screenshots the window stays on the direct path, and in real closes the latency
+    /// alternates 8/16 ms, which made this toggle flap between 60 and 120 and add cadence breaks of its own.
+    private let adaptiveEnabled = UserDefaults.standard.bool(forKey: "expAdaptive")
 
     private func notePresentLatency(_ latency: Double) {
         recentLatencies.append(latency)
@@ -553,6 +567,7 @@ final class EffectController: ObservableObject {
         playhead = 0
         playheadVelocity = 0
         lastTarget = playhead
+        lastVelocity = 0
         glide(to: target, endVelocity: 0, duration: max(0.1, min(0.2, target * degreesPerFrame / 60)), now: foldStartTime)
         show(frame: Int(playhead.rounded()), now: foldStartTime, force: true)
         // Freeze: capture frames are ignored from now on. Stopping the stream (or taking keyboard focus) while
@@ -575,6 +590,7 @@ final class EffectController: ObservableObject {
         playhead = 0
         playheadVelocity = 0
         lastTarget = 0
+        lastVelocity = 0
         hideWhenSettled = false
         stopDisplayLink()
         overlay.hide()

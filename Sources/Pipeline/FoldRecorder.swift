@@ -167,7 +167,13 @@ final class FoldRecorder {
         let mean = moved.isEmpty ? 0 : moved.reduce(0, +) / Double(moved.count)
         let wobble = moved.count < 2 || mean == 0 ? 0 :
             (moved.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(moved.count)).squareRoot() / mean
-        let lagFrames = ticks.map { abs($0.target - $0.playhead) }
+        // Lag = how far the playhead trails the latest sensor reading (frames), sampled at every tick.
+        var lagFrames: [Double] = []
+        var ri = 0
+        for t in ticks {
+            while ri + 1 < readings.count && readings[ri + 1].t <= t.t { ri += 1 }
+            if !readings.isEmpty { lagFrames.append(abs(readings[ri].target - t.playhead)) }
+        }
         let maxWait = frames.map { $0.acquired - $0.drawStart }.max() ?? 0
         let maxQueue = frames.map { $0.gpuStart - $0.acquired }.max() ?? 0
         let maxGPU = frames.map { $0.gpuEnd - $0.gpuStart }.max() ?? 0
