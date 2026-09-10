@@ -37,7 +37,7 @@ struct GeneralPane: View {
                 }
                 .pickerStyle(.segmented)
                 .focusEffectDisabled()
-                Slider(value: $state.params.blurSpread, in: 0...0.3) { Text("Blur") }
+                Slider(value: $state.params.blurSpread, in: 0...0.4) { Text("Blur") }
                 Slider(value: $state.params.darkening, in: 0...0.04) { Text("Shadow") }
             }
 

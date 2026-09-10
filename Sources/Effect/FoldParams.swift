@@ -7,13 +7,13 @@ struct FoldParams: Codable, Equatable {
     // Physical model
     var eyeDistanceMM: Double = 550      // viewer to screen, head-on
     var pointsPerMM: Double = 4.4        // 14" MacBook Pro: 1512 pt / ~344 mm
-    var blurSpread: Double = 0.07        // blur px per px of glass-to-plane gap
+    var blurSpread: Double = 0.10        // blur px per px of glass-to-plane gap
     var darkening: Double = 0.006        // light lost per px of blur radius
     var minLight: Double = 0.25          // brightness floor
     var rampDegrees: Double = 18         // blur/darkening ease-in over the first degrees of tilt
     var maxTiltDegrees: Double = 70      // tilt at progress 1 (preview / manual mode)
     var hinge: Double = 0                // 0 = bottom edge (laptop), 1 = top
-    var maxTaps: Double = 20             // blur kernel cap
+    var maxTaps: Double = 32             // blur kernel cap
     // Cosmetics
     var frost: Double = 0
     var sheen: Double = 0.25
