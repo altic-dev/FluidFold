@@ -15,7 +15,7 @@ struct DuofyApp: App {
                  ? "Lid angle: \(Int(state.controller.angle))°"
                  : "No hinge sensor on this Mac")
             Divider()
-            ControllerToggles()
+            ControllerTogglesInner(controller: state.controller)
             Divider()
             Button("Preview on screen") { state.controller.simulateClose() }.keyboardShortcut("p")
             Button("Settings…") {
@@ -24,17 +24,10 @@ struct DuofyApp: App {
             }.keyboardShortcut(",")
             Button("Quit Duofy") { NSApp.terminate(nil) }.keyboardShortcut("q")
         }
-        .environmentObject(state)
         Settings {
             SettingsView().environmentObject(state)
         }
     }
-}
-
-/// Binds directly to the controller so toggles work through the nested ObservableObject.
-struct ControllerToggles: View {
-    @EnvironmentObject var state: AppState
-    var body: some View { ControllerTogglesInner(controller: state.controller) }
 }
 
 struct ControllerTogglesInner: View {

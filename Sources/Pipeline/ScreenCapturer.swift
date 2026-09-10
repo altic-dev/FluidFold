@@ -52,7 +52,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
             try await s.startCapture()
             stream = s
         } catch {
-            NSLog("Duofy: capture start failed: \(error)")
+            dlog("capture start failed: \(error)")
         }
     }
 
@@ -71,7 +71,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        NSLog("Duofy: stream stopped: \(error)")
+        dlog("stream stopped: \(error)")
         self.stream = nil
     }
 }

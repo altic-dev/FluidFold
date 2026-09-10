@@ -28,7 +28,7 @@ final class AppState: ObservableObject {
         get { SMAppService.mainApp.status == .enabled }
         set {
             do { newValue ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() }
-            catch { NSLog("Duofy: launch at login failed: \(error)") }
+            catch { dlog("launch at login failed: \(error)") }
             objectWillChange.send()
         }
     }
@@ -44,6 +44,10 @@ final class AppState: ObservableObject {
         controller.endAngle = endAngle
         controller.soundEnabled = soundEnabled
         renderer.params = params
+        // Dev hook: `scripts/preview.sh` posts this to run the on-screen sweep without touching the lid.
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.preview"), object: nil, queue: .main) { [weak self] _ in
+            self?.controller.simulateClose()
+        }
     }
 
     private func applyParams() {

@@ -15,12 +15,13 @@ struct FoldParams: Codable, Equatable {
     var drop: Double = 0.08              // 0..1, panel drop at progress 1
     var easing: Double = 1.4             // progress exponent (1 = linear)
     var maxBlurLod: Double = 5           // mip levels at blur 1
+    var hinge: Double = 0                // pivot edge: 0 = bottom (MacBook lid), 1 = top
 
     static let silk = FoldParams()
     static let shade = FoldParams(maxTiltDegrees: 60, perspective: 0.35, blur: 0.3, shadow: 0.9, frost: 0, sheen: 0.1, vignette: 0.5)
     static let frost = FoldParams(maxTiltDegrees: 55, perspective: 0.4, blur: 1.0, shadow: 0.3, frost: 0.35, sheen: 0, vignette: 0.15)
 
-    /// Must match the Metal struct layout (12 floats, 48 bytes).
+    /// Must match the Metal struct layout (14 floats, 56 bytes).
     struct Uniforms {
         var progress: Float
         var tilt: Float
@@ -34,6 +35,8 @@ struct FoldParams: Codable, Equatable {
         var yOffset: Float
         var aspect: Float
         var time: Float
+        var hinge: Float
+        var pad0: Float = 0
     }
 
     func uniforms(progress rawProgress: Double, aspect: Double, time: Double) -> Uniforms {
@@ -49,9 +52,10 @@ struct FoldParams: Codable, Equatable {
             sheen: Float(sheen),
             vignette: Float(vignette),
             scale: Float(1 - p * shrink),
-            yOffset: Float(-p * drop),
+            yOffset: Float(p * drop * (hinge > 0.5 ? -1 : 1)),
             aspect: Float(aspect),
-            time: Float(time)
+            time: Float(time),
+            hinge: Float(hinge)
         )
     }
 }

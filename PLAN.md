@@ -20,14 +20,14 @@ Contract between Pipeline and Effect: `renderer.setSource(pixelBuffer:)`, `rende
 |---|---|---|
 | M0 | Build & signing: xcodegen `project.yml`, `build_dev.sh` (copied pattern from FluidVoice), local Apple Development cert via `xcconfig/LocalSigning.xcconfig` | done |
 | M1 | Effect module: params struct + 3 presets, runtime shader with file-watch hot reload, tuning panel with a slider per uniform, preset JSON copy/paste | done |
-| M2 | Pipeline: hinge sensor polling, display capture excluding own windows, shielding-level overlay window, controller with start/end angles, pause (click / Esc) | in progress |
-| M3 | App shell: menu bar extra, Settings with live MacBook preview + lid slider, sound click, launch at login | todo |
-| M4 | First install + verify on this MacBook (permission prompt, lid close/open, pause) | todo |
-| M5 | Graphics tuning loop: edit `.metal` / sliders → ship defaults into `FoldParams` presets | todo |
+| M2 | Pipeline: hinge sensor polling, display capture excluding own windows, shielding-level overlay window, controller with start/end angles, pause (click / Esc) | done |
+| M3 | App shell: menu bar extra, Settings with live MacBook preview + lid slider, sound click, launch at login | done |
+| M4 | First install + verify on this MacBook: permission granted, simulated sweep renders (frame dump verified), real lid close/open still to be tried by hand | done (needs manual lid test) |
+| M5 | Graphics tuning loop: edit `.metal` / sliders → ship defaults into `FoldParams` presets | next |
 | Later | Developer ID + notarization + DMG (needs Barath's Developer ID cert), licensing (skipped for personal build) | later |
 
 ## Tuning workflow (M5)
 
-1. `./build_dev.sh` installs to /Applications and points the app at the repo's `FoldEffect.metal` for hot reload.
-2. Menu bar → Settings → Tuning: drag sliders, or edit the `.metal` file and save.
+1. `./build_dev.sh` installs to /Applications. In Settings → Tuning → Choose…, pick the repo's `FoldEffect.metal` once (grants file access) for hot reload.
+2. Drag sliders, or edit the `.metal` file and save. `scripts/preview.sh` runs a full-screen sweep.
 3. Copy JSON → paste values into `FoldParams` presets in `FoldParams.swift`.

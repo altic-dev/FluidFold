@@ -21,6 +21,7 @@ struct TuningPanel: View {
                 slider("Shrink", $params.shrink, 0...0.5)
                 slider("Drop", $params.drop, 0...0.5)
                 slider("Easing", $params.easing, 0.3...3)
+                slider("Hinge (0=bottom)", $params.hinge, 0...1)
             }
             Section("Look") {
                 slider("Blur", $params.blur, 0...1)
@@ -47,7 +48,7 @@ struct TuningPanel: View {
                     Button("Choose…") { chooseShader() }
                     Button("Apply") { applyShaderPath() }
                 }
-                Text(renderer.shaderError ?? "Shader OK. Edit the file and save; it reloads automatically.")
+                Text(renderer.shaderError ?? renderer.overrideError ?? "Shader OK (\(renderer.shaderURL.lastPathComponent)). Edit the file and save; it reloads automatically.")
                     .font(.caption.monospaced())
                     .foregroundStyle(renderer.shaderError == nil ? Color.secondary : Color.red)
                     .textSelection(.enabled)

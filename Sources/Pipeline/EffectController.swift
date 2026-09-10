@@ -30,6 +30,7 @@ final class EffectController: ObservableObject {
 
     init(renderer: FoldRenderer) {
         self.renderer = renderer
+        renderer.debugLog = UserDefaults.standard.bool(forKey: "debugLog")
         sensorAvailable = sensor.isAvailable
         sensor.onAngle = { [weak self] a in self?.angleChanged(a) }
         capturer.onFrame = { [weak self] pb in
@@ -94,6 +95,7 @@ final class EffectController: ObservableObject {
     private func showOverlay() {
         guard ScreenCapturer.hasPermission() else { ScreenCapturer.requestPermission(); return }
         isShowing = true
+        renderer.resetDump()
         minAngleSeen = angle
         renderer.clearSource()
         renderer.progress = progress(for: angle)

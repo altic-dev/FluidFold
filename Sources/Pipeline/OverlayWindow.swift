@@ -38,6 +38,8 @@ final class OverlayWindow: NSWindow {
         guard let screen = Self.builtInScreen() else { return }
         setFrame(screen.frame, display: true)
         makeKeyAndOrderFront(nil)
+        dlog("overlay show frame=\(frame) view=\(metalView.frame) layer=\(String(describing: metalView.layer)) err=\(metalView.renderer.shaderError ?? "none")")
+        metalView.needsDisplay = true
     }
 
     func hide() { orderOut(nil) }

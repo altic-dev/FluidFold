@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import MetalKit
 import CoreVideo
+import ImageIO
 
 /// Self-contained Metal renderer for the fold effect.
 /// Inputs: a source texture (`setSource`), `params`, `progress`. Output: draws into any MTKView.
@@ -24,6 +25,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     override init() {
         device = MTLCreateSystemDefaultDevice()!
         queue = device.makeCommandQueue()!
+        shaderURL = Bundle.main.url(forResource: "FoldEffect", withExtension: "metal", subdirectory: "Shaders")!
         super.init()
         CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
         reloadShader()
@@ -33,29 +35,44 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
 
     static let overridePathKey = "shaderOverridePath"
 
-    var shaderURL: URL {
-        if let path = UserDefaults.standard.string(forKey: Self.overridePathKey),
-           FileManager.default.fileExists(atPath: path) {
-            return URL(fileURLWithPath: path)
-        }
-        return Bundle.main.url(forResource: "FoldEffect", withExtension: "metal", subdirectory: "Shaders")!
+    private(set) var overrideError: String?
+
+    var bundledShaderURL: URL {
+        Bundle.main.url(forResource: "FoldEffect", withExtension: "metal", subdirectory: "Shaders")!
     }
+
+    var overrideShaderURL: URL? {
+        guard let path = UserDefaults.standard.string(forKey: Self.overridePathKey), !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// The file actually in use (override if readable, else bundled).
+    private(set) var shaderURL: URL
 
     @discardableResult
     func reloadShader() -> Bool {
+        var source: String?
+        overrideError = nil
+        if let url = overrideShaderURL {
+            do { source = try String(contentsOf: url, encoding: .utf8); shaderURL = url }
+            catch { overrideError = "Override unreadable, using bundled shader. Pick the file with Choose… to grant access. (\(error.localizedDescription))" }
+        }
+        if source == nil {
+            shaderURL = bundledShaderURL
+            source = try? String(contentsOf: bundledShaderURL, encoding: .utf8)
+        }
         do {
-            let source = try String(contentsOf: shaderURL, encoding: .utf8)
-            let library = try device.makeLibrary(source: source, options: nil)
+            let library = try device.makeLibrary(source: source ?? "", options: nil)
             let desc = MTLRenderPipelineDescriptor()
             desc.vertexFunction = library.makeFunction(name: "fold_vertex")
             desc.fragmentFunction = library.makeFunction(name: "fold_fragment")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             pipeline = try device.makeRenderPipelineState(descriptor: desc)
             shaderError = nil
-            NSLog("Duofy: shader loaded from \(shaderURL.path)")
+            dlog("shader loaded from \(shaderURL.path)")
         } catch {
             shaderError = "\(error)"
-            NSLog("Duofy: shader compile failed: \(error)")
+            dlog("shader compile failed: \(error)")
         }
         watchShaderFile()
         return shaderError == nil
@@ -117,7 +134,9 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    var debugLog = false
     func draw(in view: MTKView) {
+        if debugLog { dlog("draw size=\(view.drawableSize) drawable=\(view.currentDrawable != nil) pipeline=\(pipeline != nil) tex=\(mipTexture != nil) pending=\(pendingSource != nil) p=\(progress)") }
         guard let drawable = view.currentDrawable,
               let pass = view.currentRenderPassDescriptor,
               let cmd = queue.makeCommandBuffer() else { return }
@@ -149,7 +168,40 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
             enc.endEncoding()
         }
         cmd.present(drawable)
+        if let dumpDir = debugDumpDir, progress > 0.45, progress < 0.6, !didDump {
+            didDump = true
+            dumpFrame(drawable.texture, commandBuffer: cmd, dir: dumpDir)
+        }
         cmd.commit()
+    }
+
+    // MARK: Debug frame dump (set the `debugDumpDir` default; view must have framebufferOnly = false)
+
+    var debugDumpDir: String? { UserDefaults.standard.string(forKey: "debugDumpDir") }
+    private var didDump = false
+    func resetDump() { didDump = false }
+
+    private func dumpFrame(_ tex: MTLTexture, commandBuffer: MTLCommandBuffer, dir: String) {
+        guard !tex.isFramebufferOnly else { dlog("dump skipped: framebufferOnly"); return }
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: tex.width, height: tex.height, mipmapped: false)
+        d.storageMode = .shared
+        guard let copy = device.makeTexture(descriptor: d), let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+        blit.copy(from: tex, to: copy)
+        blit.endEncoding()
+        commandBuffer.addCompletedHandler { _ in
+            let w = copy.width, h = copy.height, bpr = w * 4
+            var bytes = [UInt8](repeating: 0, count: bpr * h)
+            copy.getBytes(&bytes, bytesPerRow: bpr, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+            let cs = CGColorSpaceCreateDeviceRGB()
+            let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            guard let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: bpr, space: cs, bitmapInfo: info.rawValue),
+                  let img = ctx.makeImage() else { return }
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("duofy_frame.png")
+            if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
+                CGImageDestinationAddImage(dest, img, nil); CGImageDestinationFinalize(dest)
+                dlog("dumped frame to \(url.path)")
+            }
+        }
     }
 }
 
@@ -167,6 +219,7 @@ final class FoldMetalView: MTKView {
         colorPixelFormat = .bgra8Unorm
         isPaused = true
         enableSetNeedsDisplay = true
+        framebufferOnly = renderer.debugDumpDir == nil
         layer?.backgroundColor = .black
     }
     required init(coder: NSCoder) { fatalError() }
