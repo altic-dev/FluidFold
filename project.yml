@@ -1,0 +1,48 @@
+name: Duofy
+options:
+  bundleIdPrefix: com.altic
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: TEAMID
+    CODE_SIGN_IDENTITY: "Apple Development"
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+targets:
+  Duofy:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    entitlements:
+      path: Duofy.entitlements
+      properties:
+        com.apple.security.cs.disable-library-validation: false
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Duofy
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSUIElement: true
+        LSMinimumSystemVersion: "14.0"
+        NSScreenCaptureUsageDescription: Duofy captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
+        NSHumanReadableCopyright: Copyright © 2026 Altic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Duofy
+        PRODUCT_NAME: Duofy
+        CODE_SIGN_ENTITLEMENTS: Duofy.entitlements
+        SWIFT_OPTIMIZATION_LEVEL: "-O"
+schemes:
+  Duofy:
+    build:
+      targets:
+        Duofy: all
+    run:
+      config: Release

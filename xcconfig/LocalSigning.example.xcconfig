@@ -1,0 +1,4 @@
+// Copy to xcconfig/LocalSigning.xcconfig and edit.
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development: Your Name (CERTID)
+DEVELOPMENT_TEAM = TEAMID
