@@ -7,6 +7,7 @@ import AppKit
 final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     var onFrame: ((CVPixelBuffer) -> Void)?
     private var stream: SCStream?
+    private var starting = false
     private let queue = DispatchQueue(label: "duofy.capture", qos: .userInteractive)
 
     static func hasPermission() -> Bool { CGPreflightScreenCaptureAccess() }
@@ -33,15 +34,19 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
     static func snapshot() async -> CGImage? {
         guard let (filter, display) = try? await filter() else { return nil }
         let cfg = SCStreamConfiguration()
-        cfg.width = display.width; cfg.height = display.height
+        cfg.width = CGDisplayPixelsWide(display.displayID); cfg.height = CGDisplayPixelsHigh(display.displayID)
         cfg.showsCursor = false
         return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
     }
 
-    func start(fps: Int = 30) async {
-        guard stream == nil, let (filter, display) = try? await Self.filter() else { return }
+    func start(fps: Int = 60) async {
+        guard stream == nil, !starting else { return }
+        starting = true
+        defer { starting = false }
+        guard let (filter, display) = try? await Self.filter() else { return }
         let cfg = SCStreamConfiguration()
-        cfg.width = display.width; cfg.height = display.height   // 1x resolution keeps it light; blur hides the rest
+        // Full pixel resolution so the tilt-0 frame is indistinguishable from the live screen.
+        cfg.width = CGDisplayPixelsWide(display.displayID); cfg.height = CGDisplayPixelsHigh(display.displayID)
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
         cfg.queueDepth = 3

@@ -7,11 +7,13 @@ struct FoldParams: Codable, Equatable {
     // Physical model
     var eyeDistanceMM: Double = 550      // viewer to screen, head-on
     var pointsPerMM: Double = 4.4        // 14" MacBook Pro: 1512 pt / ~344 mm
-    var blurSpread: Double = 0.10        // blur px per px of glass-to-plane gap
-    var darkening: Double = 0.012        // light lost per px of blur radius
+    var blurSpread: Double = 0.07        // blur px per px of glass-to-plane gap
+    var darkening: Double = 0.006        // light lost per px of blur radius
+    var minLight: Double = 0.25          // brightness floor
+    var rampDegrees: Double = 18         // blur/darkening ease-in over the first degrees of tilt
     var maxTiltDegrees: Double = 70      // tilt at progress 1 (preview / manual mode)
     var hinge: Double = 0                // 0 = bottom edge (laptop), 1 = top
-    var maxTaps: Double = 32             // blur kernel cap
+    var maxTaps: Double = 20             // blur kernel cap
     // Cosmetics
     var frost: Double = 0
     var sheen: Double = 0.25
@@ -19,8 +21,8 @@ struct FoldParams: Codable, Equatable {
     var easing: Double = 1.0             // progress exponent for preview sweeps
 
     static let silk = FoldParams()
-    static let shade = FoldParams(blurSpread: 0.05, darkening: 0.03, sheen: 0.05, vignette: 0.4)
-    static let frost = FoldParams(blurSpread: 0.2, darkening: 0.006, frost: 0.35, sheen: 0, vignette: 0.1)
+    static let shade = FoldParams(blurSpread: 0.05, darkening: 0.02, minLight: 0.1, sheen: 0.05, vignette: 0.4)
+    static let frost = FoldParams(blurSpread: 0.2, darkening: 0.003, minLight: 0.4, frost: 0.35, sheen: 0, vignette: 0.1)
 
     /// Must match the Metal struct layout (16 floats, 64 bytes).
     struct Uniforms {
@@ -36,7 +38,9 @@ struct FoldParams: Codable, Equatable {
         var progress: Float
         var time: Float
         var maxTaps: Float
-        var pad0: Float = 0, pad1: Float = 0, pad2: Float = 0
+        var rampTilt: Float
+        var minLight: Float
+        var pad0: Float = 0
     }
 
     /// - progress: 0..1 normalized closing progress (cosmetic terms, and tilt when `tiltDegrees` is nil).
@@ -57,7 +61,9 @@ struct FoldParams: Codable, Equatable {
             size: SIMD2(Float(size.width), Float(size.height)),
             progress: Float(p),
             time: Float(time),
-            maxTaps: Float(maxTaps)
+            maxTaps: Float(maxTaps),
+            rampTilt: Float(rampDegrees * .pi / 180),
+            minLight: Float(minLight)
         )
     }
 }

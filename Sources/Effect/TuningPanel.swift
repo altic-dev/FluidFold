@@ -21,6 +21,8 @@ struct TuningPanel: View {
                 slider("Points/mm", $params.pointsPerMM, 2...8)
                 slider("Blur spread", $params.blurSpread, 0...0.4)
                 slider("Darkening", $params.darkening, 0...0.05)
+                slider("Min light", $params.minLight, 0...1)
+                slider("Ramp °", $params.rampDegrees, 0...40)
                 slider("Hinge (0=bottom)", $params.hinge, 0...1)
                 slider("Max taps", $params.maxTaps, 6...64)
             }
@@ -51,6 +53,10 @@ struct TuningPanel: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(renderer.shaderError == nil ? Color.secondary : Color.red)
                     .textSelection(.enabled)
+            }
+            Section("Performance") {
+                Text("Overlay render: \(Int(renderer.measuredFPS)) fps, \(renderer.droppedFrames) dropped. GPU \(String(format: "%.1f", renderer.gpuMs)) ms/frame. `defaults write com.altic.Duofy renderScale 1` halves the cost.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary) }
         }

@@ -25,7 +25,9 @@ struct FoldUniforms {
     float progress;     // 0..1 normalized closing progress (for cosmetic terms)
     float time;         // seconds
     float maxTaps;      // blur kernel cap
-    float pad0, pad1, pad2;
+    float rampTilt;     // radians over which blur/darkening ease in from zero
+    float minLight;     // brightness floor for the darkening term
+    float pad0;
 };
 
 struct VOut { float4 pos [[position]]; float2 uv; };
@@ -69,8 +71,10 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
     const float  t   = eye.z / depth;
     const float2 hit = eye.xy + (glass.xy - eye.xy) * t;
 
+    // Ease the frost in over the first degrees so the onset is gradual instead of a switch.
+    const float ramp   = smoothstep(0.0, 1.0, tilt / max(u.rampTilt, 1e-3));
     const float gap    = glass.z;
-    const float radius = u.blurSpread * gap;
+    const float radius = u.blurSpread * ramp * gap;
 
     if (any(hit < -radius) || any(hit > size + radius)) return float4(0, 0, 0, 1);
 
@@ -94,7 +98,7 @@ fragment float4 fold_fragment(VOut in [[stage_in]],
     }
 
     // Frosted glass absorbs in proportion to how much it scatters.
-    const float attenuation = max(1.0 - u.darkening * radius, 0.0);
+    const float attenuation = max(1.0 - u.darkening * radius, u.minLight);
     col *= attenuation;
 
     // Cosmetics: vignette on the glass, sheen band sweeping with progress, frost haze.

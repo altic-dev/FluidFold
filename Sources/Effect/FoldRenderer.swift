@@ -26,6 +26,14 @@ final class FoldRenderer: NSObject {
     private var pendingRetain: [Any] = []   // keeps CVPixelBuffer/CVMetalTexture alive until the GPU copy finishes
     private var textureCache: CVMetalTextureCache?
     private let startTime = CACurrentMediaTime()
+    /// At most this many frames in flight; extra render requests are dropped instead of blocking.
+    private let inflight = DispatchSemaphore(value: 2)
+    private(set) var droppedFrames = 0
+    private var fpsCount = 0
+    private var fpsWindowStart = CACurrentMediaTime()
+    /// Rolling frames-per-second of completed renders (for the Tuning panel / logs).
+    private(set) var measuredFPS: Double = 0
+    private(set) var gpuMs: Double = 0
     private var shaderWatcher: DispatchSourceFileSystemObject?
     private var shaderFD: Int32 = -1
 
@@ -142,8 +150,21 @@ final class FoldRenderer: NSObject {
 
     var debugLog = false
     func render(into layer: CAMetalLayer) {
-        guard layer.drawableSize.width > 0, let drawable = layer.nextDrawable(),
-              let cmd = queue.makeCommandBuffer() else { return }
+        guard layer.drawableSize.width > 0 else { return }
+        guard inflight.wait(timeout: .now()) == .success else { droppedFrames += 1; return }
+        guard let drawable = layer.nextDrawable(), let cmd = queue.makeCommandBuffer() else { inflight.signal(); return }
+        cmd.addCompletedHandler { [weak self] cb in
+            guard let self else { return }
+            self.inflight.signal()
+            self.fpsCount += 1
+            self.gpuMs = (cb.gpuEndTime - cb.gpuStartTime) * 1000
+            let now = CACurrentMediaTime()
+            if now - self.fpsWindowStart >= 1 {
+                self.measuredFPS = Double(self.fpsCount) / (now - self.fpsWindowStart)
+                self.fpsCount = 0; self.fpsWindowStart = now
+                if self.debugLog { dlog("fps=\(Int(self.measuredFPS)) dropped=\(self.droppedFrames) gpu=\(String(format: "%.1f", self.gpuMs))ms") }
+            }
+        }
         if debugLog { dlog("draw size=\(layer.drawableSize) pipeline=\(pipeline != nil) tex=\(mipTexture != nil) pending=\(pendingSource != nil) p=\(progress)") }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
@@ -224,7 +245,6 @@ extension Notification.Name {
 /// Drop-in view backed by a CAMetalLayer. Call `requestRender()` whenever progress/params/source change.
 final class FoldMetalView: NSView {
     let renderer: FoldRenderer
-    private var renderScheduled = false
 
     init(renderer: FoldRenderer) {
         self.renderer = renderer
@@ -256,21 +276,18 @@ final class FoldMetalView: NSView {
         updateDrawableSize()
     }
 
+    /// Render scale relative to points. 1 = non-Retina (4x cheaper than 2), fine for a blurred, tilted picture.
+    var renderScale: CGFloat = 1 { didSet { updateDrawableSize() } }
+
     private func updateDrawableSize() {
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = renderScale
         metalLayer.contentsScale = scale
         metalLayer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         requestRender()
     }
 
-    /// Coalesces multiple requests per runloop turn into one render.
+    /// Renders now. Callers paced by a display link should call this once per tick.
     func requestRender() {
-        guard !renderScheduled else { return }
-        renderScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.renderScheduled = false
-            self.renderer.render(into: self.metalLayer)
-        }
+        renderer.render(into: metalLayer)
     }
 }

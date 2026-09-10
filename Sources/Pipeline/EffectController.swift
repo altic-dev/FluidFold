@@ -29,9 +29,14 @@ final class EffectController: ObservableObject {
     /// Smoothed angle driving the render; the sensor is quantized to whole degrees at ~30 Hz.
     private var smoothedAngle: Double = 120
     private var angleVelocity: Double = 0
-    private var frameTimer: Timer?
+    private var displayLink: CADisplayLink?
     private var lastFrameTime = CACurrentMediaTime()
-    var smoothing: Double = 14   // spring stiffness-ish; higher = snappier
+    var smoothing: Double = 40   // spring stiffness-ish; higher = snappier
+    /// Start capturing this many degrees before the effect threshold so the first overlay frame is ready.
+    var prewarmDegrees: Double = 10
+    private var hasFrame = false
+    private var pendingShow = false
+    private var settlingToHide = false
 
     init(renderer: FoldRenderer) {
         self.renderer = renderer
@@ -40,13 +45,27 @@ final class EffectController: ObservableObject {
         sensor.onAngle = { [weak self] a in self?.angleChanged(a) }
         capturer.onFrame = { [weak self] pb in
             DispatchQueue.main.async {
-                guard let self, self.isShowing else { return }
+                guard let self else { return }
                 self.renderer.setSource(pixelBuffer: pb)
-                self.overlay.metalView.requestRender()
+                self.hasFrame = true
+                if self.pendingShow { self.pendingShow = false; self.presentOverlay() }
+                // Rendering is paced by the display link; frames only update the source texture.
             }
         }
         if let a = sensor.readAngle() { angle = a }
         sensor.start()
+        let ws = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
+            ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.hideOverlay(playSound: false)
+                self?.capturer.stop(); self?.hasFrame = false
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if let a = self.sensor.readAngle() { self.angle = a }
+            self.evaluate()
+        }
     }
 
     func progress(for angle: Double) -> Double {
@@ -85,15 +104,26 @@ final class EffectController: ObservableObject {
         let a = angle
         // Re-arm after a pause once the lid is opened past the start angle.
         if a >= startAngle + 3 { armed = true }
-        let shouldShow = isEnabled && !isPaused && armed && a < startAngle
+        let active = isEnabled && !isPaused && armed
+        // Pre-warm the capture stream just above the threshold so frames are flowing before we show.
+        if active && !isShowing && !pendingShow {
+            if a < startAngle + prewarmDegrees { Task { await capturer.start() } }
+            else if a > startAngle + prewarmDegrees + 5 { capturer.stop(); hasFrame = false }
+        }
+        let shouldShow = active && a < startAngle
         if shouldShow {
-            if !isShowing { showOverlay() }
+            settlingToHide = false
+            if !isShowing && !pendingShow { showOverlay() }
             minAngleSeen = min(minAngleSeen, a)
         } else if isShowing {
-            let opened = a >= startAngle && minAngleSeen < startAngle - 10
-            hideOverlay(playSound: opened)
+            // Let the spring return to tilt 0 first; at tilt 0 the overlay equals the live screen, so hiding is seamless.
+            settlingToHide = true
+        } else if pendingShow {
+            pendingShow = false
         }
     }
+
+    @objc private func displayTick(_ link: CADisplayLink) { tick() }
 
     /// Critically damped spring toward the sensor angle, then render.
     private func tick() {
@@ -104,6 +134,11 @@ final class EffectController: ObservableObject {
         let accel = k * k * (angle - smoothedAngle) - 2 * k * angleVelocity
         angleVelocity += accel * dt
         smoothedAngle += angleVelocity * dt
+        if settlingToHide && (smoothedAngle >= startAngle - 0.3 || abs(angle - smoothedAngle) < 0.05 && angleVelocity.magnitude < 0.5) {
+            let opened = minAngleSeen < startAngle - 10
+            hideOverlay(playSound: opened)
+            return
+        }
         applyAngle(smoothedAngle)
     }
 
@@ -115,36 +150,47 @@ final class EffectController: ObservableObject {
 
     private func showOverlay() {
         guard ScreenCapturer.hasPermission() else { ScreenCapturer.requestPermission(); return }
+        Task { await capturer.start() }
+        if hasFrame { presentOverlay() } else { pendingShow = true }
+    }
+
+    /// Called once a capture frame exists: the first overlay frame is the live desktop at tilt 0, so nothing pops.
+    private func presentOverlay() {
         isShowing = true
+        settlingToHide = false
         renderer.resetDump()
         minAngleSeen = angle
-        renderer.clearSource()
-        smoothedAngle = angle
+        smoothedAngle = startAngle
         angleVelocity = 0
         applyAngle(smoothedAngle)
+        overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero ?? (overlay.screen?.backingScaleFactor ?? 2))
         overlay.show()
         lastFrameTime = CACurrentMediaTime()
-        frameTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
-        RunLoop.main.add(frameTimer!, forMode: .common)
-        if !UserDefaults.standard.bool(forKey: "debugClearOnly") { Task { await capturer.start() } }
+        displayLink = overlay.metalView.displayLink(target: self, selector: #selector(displayTick))
+        displayLink?.add(to: .main, forMode: .common)
     }
 
     private func hideOverlay(playSound: Bool) {
         guard isShowing else { return }
         isShowing = false
-        frameTimer?.invalidate(); frameTimer = nil
-        capturer.stop()
+        settlingToHide = false
+        displayLink?.invalidate(); displayLink = nil
         overlay.hide()
-        renderer.clearSource()
+        // Keep the stream warm; evaluate() stops it once the lid is well above the threshold.
         if playSound && soundEnabled { SoundPlayer.click() }
     }
 
     private func userDismissed() {
         armed = false
         hideOverlay(playSound: false)
+        capturer.stop(); hasFrame = false
     }
 }
 
 enum SoundPlayer {
     static func click() { NSSound(named: "Tink")?.play() }
+}
+
+private extension Double {
+    var nonZero: Double? { self == 0 ? nil : self }
 }

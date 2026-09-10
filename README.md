@@ -49,7 +49,7 @@ Workflow:
    (the picker grants file access). Save the file and the app reloads it instantly; compile errors show in the panel.
 3. Happy? **Copy JSON** and paste the values into the presets in `FoldParams.swift`.
 
-Key knobs: `eyeDistanceMM` (perspective), `blurSpread` (blur per px of gap), `darkening`, `frost`, `sheen`, `vignette`.
+Key knobs: `eyeDistanceMM` (perspective), `blurSpread` (blur per px of gap), `rampDegrees` (ease-in of the frost), `darkening` + `minLight`, `frost`, `sheen`, `vignette`. Responsiveness: `EffectController.smoothing` (spring stiffness) and `prewarmDegrees`.
 
 Adding a uniform: add a field to `FoldParams`, to `FoldParams.Uniforms`, and to `FoldUniforms` in the `.metal` file (same order, 16-byte aligned).
 

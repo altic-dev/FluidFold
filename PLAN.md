@@ -23,7 +23,9 @@ Contract between Pipeline and Effect: `renderer.setSource(pixelBuffer:)`, `rende
 | M2 | Pipeline: hinge sensor polling, display capture excluding own windows, shielding-level overlay window, controller with start/end angles, pause (click / Esc) | done |
 | M3 | App shell: menu bar extra, Settings with live MacBook preview + lid slider, sound click, launch at login | done |
 | M4 | First install + verify: permission granted, overlay verified on the real screen via simulated sweep (MTKView bug on macOS 27 beta worked around) | done |
-| M5 | Physically based effect: frosted-glass reprojection (ported from DuoLikeAnimation), spring-smoothed sensor. Tune presets via Tuning panel | in progress |
+| M5 | Physically based effect: frosted-glass reprojection (ported from DuoLikeAnimation), spring-smoothed sensor | done |
+| M6 | Smoothness: pre-warmed capture, tilt-0 first frame at Retina res, settle-before-hide, display-link pacing, GPU ~3 ms/frame, sleep/wake handling | done |
+| M7 | Feel tuning with Barath: blurSpread / ramp / darkening / smoothing presets | next |
 | Later | Developer ID + notarization + DMG (needs Barath's Developer ID cert), licensing (skipped for personal build) | later |
 
 ## Tuning workflow (M5)

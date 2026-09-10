@@ -29,7 +29,7 @@ final class LidAngleSensor {
         return Double(UInt16(buf[1]) | UInt16(buf[2]) << 8)
     }
 
-    func start(hz: Double = 30) {
+    func start(hz: Double = 60) {
         stop()
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "duofy.lid", qos: .userInteractive))
         t.schedule(deadline: .now(), repeating: 1.0 / hz)
