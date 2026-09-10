@@ -50,6 +50,8 @@ struct GeneralPane: View {
                 }
                 Toggle("Launch at login", isOn: Binding(get: { state.launchAtLogin }, set: { state.launchAtLogin = $0 }))
                     .toggleStyle(.switch)
+                Toggle("Check for updates automatically", isOn: Binding(get: { state.updater.automaticallyChecks }, set: { state.updater.automaticallyChecks = $0 }))
+                    .toggleStyle(.switch)
             } header: {
                 Text("Behavior")
             } footer: {
@@ -101,6 +103,7 @@ struct GeneralPane: View {
                 Text("FluidFold \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                     .font(.caption).foregroundStyle(.tertiary)
                 Spacer()
+                GlassButton(title: "Check for Updates") { state.updater.check() }
                 GlassButton(title: "Quit FluidFold") { NSApp.terminate(nil) }
             }
             .padding(.horizontal, 20)

@@ -14,6 +14,10 @@ settings:
     CODE_SIGN_IDENTITY: "Apple Development"
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.7.0"
 targets:
   FluidFold:
     type: application
@@ -26,6 +30,8 @@ targets:
         buildPhase: resources
       - path: Resources/AppIcon.icns
         buildPhase: resources
+    dependencies:
+      - package: Sparkle
     entitlements:
       path: FluidFold.entitlements
       properties: {}
@@ -41,6 +47,9 @@ targets:
         LSMinimumSystemVersion: "15.2"
         NSScreenCaptureUsageDescription: FluidFold captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
         NSHumanReadableCopyright: Copyright © 2026 Altic
+        SUFeedURL: "$(SPARKLE_FEED_URL)"
+        SUPublicEDKey: "$(SPARKLE_PUBLIC_ED_KEY)"
+        SUEnableAutomaticChecks: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.altic.FluidFold
@@ -49,6 +58,8 @@ targets:
         SWIFT_OPTIMIZATION_LEVEL: "-O"
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0.0
+        SPARKLE_FEED_URL: https://github.com/altic-dev/FluidFold/releases/latest/download/appcast.xml
+        SPARKLE_PUBLIC_ED_KEY: "5GbAfhMoLQPgU22ur80o0atj8QTYJvRnf1AH66+DZs4="
 schemes:
   FluidFold:
     build:

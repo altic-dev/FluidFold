@@ -6,7 +6,7 @@ struct FluidFoldApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(controller: state.controller, permissions: state.permissions)
+            MenuContent(controller: state.controller, permissions: state.permissions, updater: state.updater)
         } label: {
             MenuBarLabel(controller: state.controller, permissions: state.permissions)
         }
@@ -26,6 +26,7 @@ struct FluidFoldApp: App {
 struct MenuContent: View {
     @ObservedObject var controller: EffectController
     @ObservedObject var permissions: PermissionsModel
+    @ObservedObject var updater: Updater
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
@@ -48,6 +49,8 @@ struct MenuContent: View {
             openSettings()
         }
         .keyboardShortcut(",")
+        Button("Check for Updates…") { updater.check() }
+            .disabled(!updater.canCheck)
         Button("Quit FluidFold") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
@@ -60,9 +63,7 @@ struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        // Quantize to 5° so the glyph only redraws on real movement.
-        let shown = controller.sensorAvailable ? (controller.angle / 5).rounded() * 5 : 100
-        Image(nsImage: MenuBarIcon.image(angleDegrees: shown, paused: !controller.isEnabled))
+        Image(nsImage: controller.isEnabled ? MenuBarIcon.active : MenuBarIcon.paused)
             // Dev hook (scripts, screenshots): open Settings without clicking the menu.
             .onReceive(DistributedNotificationCenter.default().publisher(for: .init("com.altic.FluidFold.settings"))) { _ in
                 NSApp.activate(ignoringOtherApps: true)

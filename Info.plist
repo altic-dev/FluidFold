@@ -32,5 +32,11 @@
 	<string>Copyright © 2026 Altic</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>FluidFold captures your desktop to animate it while the lid closes. Nothing is recorded or saved.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>$(SPARKLE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
 </dict>
 </plist>

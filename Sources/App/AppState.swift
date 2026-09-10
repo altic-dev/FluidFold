@@ -9,6 +9,7 @@ final class AppState: ObservableObject {
     let renderer = FoldRenderer()
     let controller: EffectController
     let permissions = PermissionsModel()
+    let updater = Updater()
 
     @AppStorage("style") var styleRaw: String = FoldStyle.silk.rawValue { didSet { applyParams() } }
     @AppStorage("customParams") private var customParamsJSON: String = ""

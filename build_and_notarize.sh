@@ -75,4 +75,11 @@ if [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
     xcrun notarytool submit "${DMG}" --keychain-profile "${NOTARIZATION_PROFILE}" --wait 2>&1 | grep -E "status:" | tail -1
     xcrun stapler staple "${DMG}" | tail -1
 fi
+echo "━━ appcast"
+SPARKLE_BIN="$(ls -d ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/SourcePackages/artifacts/sparkle/Sparkle/bin 2>/dev/null | head -1 || true)"
+[ -x "${SPARKLE_BIN}/generate_appcast" ] || { echo "❌ generate_appcast not found (resolve packages in Xcode first)"; exit 1; }
+UPDATES="${BUILD_DIR}/updates"; rm -rf "${UPDATES}"; mkdir -p "${UPDATES}"; cp "${DMG}" "${UPDATES}/"
+"${SPARKLE_BIN}/generate_appcast" --account "${APP_NAME}" \
+    --download-url-prefix "https://github.com/altic-dev/${APP_NAME}/releases/download/v${VERSION}/" "${UPDATES}" | tail -1
 echo "✅ ${DMG}"
+echo "✅ ${UPDATES}/appcast.xml  (upload both as assets of GitHub release v${VERSION})"

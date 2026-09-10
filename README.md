@@ -128,3 +128,7 @@ defaults write com.altic.FluidFold debugDumpDir "$PWD/build"  # writes build/hin
 - `Sources/Pipeline` — `LidAngleSensor`, `ScreenCapturer`, `OverlayWindow`, `EffectController`
 - `Sources/Effect` — the fold effect (see above)
 - `PLAN.md` — milestones
+
+# Updates (Sparkle)
+- Feed: `https://github.com/altic-dev/FluidFold/releases/latest/download/appcast.xml`; EdDSA key lives in the login keychain (account `FluidFold`, made with Sparkle's `generate_keys`).
+- `./build_and_notarize.sh` also writes `build/release/updates/appcast.xml`. Publish a GitHub release `vX.Y.Z` with the DMG and `appcast.xml` as assets.
