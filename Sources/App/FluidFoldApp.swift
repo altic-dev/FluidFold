@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct DuskApp: App {
+struct FluidFoldApp: App {
     @StateObject private var state = AppState()
     @Environment(\.openSettings) private var openSettings
 
@@ -17,7 +17,7 @@ struct DuskApp: App {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }.keyboardShortcut(",")
-            Button("Quit Dusk") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            Button("Quit FluidFold") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
             MenuBarLabel(controller: state.controller)
         }

@@ -1,4 +1,4 @@
-// Dusk fold effect. Loaded at RUNTIME (not compiled by Xcode): edit, save, and the app reloads it.
+// FluidFold effect. Loaded at RUNTIME (not compiled by Xcode): edit, save, and the app reloads it.
 // Keep `FoldUniforms` in sync with FoldParams.Uniforms in FoldParams.swift.
 //
 // Model (after elijah-semyonov/DuoLikeAnimation, adapted for a laptop lid):

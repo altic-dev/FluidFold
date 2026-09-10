@@ -1,4 +1,4 @@
-name: Dusk
+name: FluidFold
 options:
   bundleIdPrefix: com.altic
   deploymentTarget:
@@ -15,7 +15,7 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 targets:
-  Dusk:
+  FluidFold:
     type: application
     platform: macOS
     sources:
@@ -25,29 +25,29 @@ targets:
         type: folder
         buildPhase: resources
     entitlements:
-      path: Dusk.entitlements
+      path: FluidFold.entitlements
       properties:
         com.apple.security.cs.disable-library-validation: false
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Dusk
+        CFBundleDisplayName: FluidFold
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true
         LSMinimumSystemVersion: "15.2"
-        NSScreenCaptureUsageDescription: Dusk captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
+        NSScreenCaptureUsageDescription: FluidFold captures your desktop to animate it while the lid closes. Nothing is recorded or saved.
         NSHumanReadableCopyright: Copyright © 2026 Altic
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.altic.Dusk
-        PRODUCT_NAME: Dusk
-        CODE_SIGN_ENTITLEMENTS: Dusk.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.altic.FluidFold
+        PRODUCT_NAME: FluidFold
+        CODE_SIGN_ENTITLEMENTS: FluidFold.entitlements
         SWIFT_OPTIMIZATION_LEVEL: "-O"
 schemes:
-  Dusk:
+  FluidFold:
     build:
       targets:
-        Dusk: all
+        FluidFold: all
     run:
       config: Release

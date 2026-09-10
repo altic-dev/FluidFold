@@ -1,11 +1,11 @@
 #!/bin/bash
-# Dusk fast development build: xcodegen -> xcodebuild -> /Applications -> launch.
+# FluidFold fast development build: xcodegen -> xcodebuild -> /Applications -> launch.
 # Usage: ./build_dev.sh          (env: CONFIGURATION=Debug INSTALL_APP=0 LAUNCH_APP=0)
 set -euo pipefail
 
 START_TIME=$(date +%s)
-APP_NAME="Dusk"
-SCHEME="Dusk"
+APP_NAME="FluidFold"
+SCHEME="FluidFold"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIGURATION="${CONFIGURATION:-Release}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${PROJECT_DIR}/build/DerivedData}"

@@ -59,7 +59,7 @@ final class EffectController: ObservableObject {
     private var framesShownThisFold = 0
     private var foldStartTime: Double = 0
     private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
-    /// Always-on per-fold smoothness report: ~/Library/Logs/Dusk/folds.log
+    /// Always-on per-fold smoothness report: ~/Library/Logs/FluidFold/folds.log
     let recorder = FoldRecorder()
     // Start-up timing, reported with each fold.
     private var captureRequestedAt: Double?
@@ -221,11 +221,11 @@ final class EffectController: ObservableObject {
             self.receive(sample)
         }
         // Debug: `scripts/sweep.sh` runs a fake lid sweep in-process at the real sensor cadence (10 Hz).
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Dusk.sweep"), object: nil, queue: .main) { [weak self] note in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.sweep"), object: nil, queue: .main) { [weak self] note in
             let seconds = (note.object as? String).flatMap(Double.init) ?? 1.5
             self?.runFakeSweep(secondsPerDirection: seconds)
         }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Dusk.inject"), object: nil, queue: .main) { [weak self] note in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.inject"), object: nil, queue: .main) { [weak self] note in
             guard let self, let value = (note.object as? String).flatMap(Double.init) else { return }
             self.injectingUntil = CACurrentMediaTime() + 1.5
             self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: value.rounded(), fine: value, fused: value))

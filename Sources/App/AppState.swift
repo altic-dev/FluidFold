@@ -35,7 +35,7 @@ final class AppState: ObservableObject {
     init() {
         controller = EffectController(renderer: renderer)
         if UserDefaults.standard.bool(forKey: "trackingTrace") { TrackingTrace.shared.start() }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Dusk.trace"), object: nil, queue: .main) { _ in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.trace"), object: nil, queue: .main) { _ in
             TrackingTrace.shared.start()
         }
         if let data = customParamsJSON.data(using: .utf8), let p = try? JSONDecoder().decode(FoldParams.self, from: data) {
@@ -47,7 +47,7 @@ final class AppState: ObservableObject {
         controller.endAngle = endAngle
         renderer.params = params
         // Dev hook: starts the same sensor-driven preview as the menu item.
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Dusk.preview"), object: nil, queue: .main) { [weak self] _ in
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.preview"), object: nil, queue: .main) { [weak self] _ in
             self?.controller.beginLivePreview()
         }
     }

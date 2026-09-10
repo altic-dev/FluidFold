@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize monotonic Dusk trace events. Ages are host pipeline timings, not optical lid latency."""
+"""Summarize monotonic FluidFold trace events. Ages are host pipeline timings, not optical lid latency."""
 import argparse
 import csv
 import json
@@ -64,5 +64,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("trace", nargs="?", type=Path)
     args = parser.parse_args()
-    path = args.trace or max((Path.home() / "Library/Logs/DuskTracking").glob("*.csv"), key=lambda p: p.stat().st_mtime)
+    path = args.trace or max((Path.home() / "Library/Logs/FluidFoldTracking").glob("*.csv"), key=lambda p: p.stat().st_mtime)
     print(json.dumps(analyze(path), indent=2))
