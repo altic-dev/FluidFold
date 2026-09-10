@@ -93,19 +93,20 @@ codesign --verify --deep --strict "$APP_PATH" || fail "codesign verify failed"
 [ -d "$APP_PATH/Contents/Frameworks/Sparkle.framework" ] || fail "Sparkle.framework missing"
 
 # ── Notarize ────────────────────────────────────────────────────────────────
-notarize() {   # notarize <file>
+notarize() {   # notarize <file to submit: zip or dmg> <bundle to staple>
     local json
-    json="$(xcrun notarytool submit "$1" --keychain-profile "$NOTARIZATION_PROFILE" --wait --output-format json 2>/dev/null)"
+    json="$(xcrun notarytool submit "$1" --keychain-profile "$NOTARIZATION_PROFILE" --wait --output-format json 2>"$OUT/notary.err")" \
+        || { cat "$OUT/notary.err"; fail "notarytool submit failed for $1"; }
     if [ "$(echo "$json" | /usr/bin/plutil -extract status raw -o - - 2>/dev/null)" != "Accepted" ]; then
         local id; id="$(echo "$json" | /usr/bin/plutil -extract id raw -o - - 2>/dev/null || true)"
         [ -n "$id" ] && xcrun notarytool log "$id" --keychain-profile "$NOTARIZATION_PROFILE" || true
         fail "notarization rejected for $1"
     fi
-    xcrun stapler staple "$1" >/dev/null || fail "staple failed for $1"
+    xcrun stapler staple "$2" >/dev/null || fail "staple failed for $2"
 }
 step "notarize app"
 ditto -c -k --keepParent "$APP_PATH" $OUT/$APP.zip
-notarize "$APP_PATH"
+notarize $OUT/$APP.zip "$APP_PATH"
 spctl --assess --type execute "$APP_PATH" 2>/dev/null || fail "Gatekeeper rejects the app"
 
 step "dmg"
@@ -114,7 +115,7 @@ ditto "$APP_PATH" $STAGE/$APP.app; ln -s /Applications $STAGE/Applications
 cp Resources/AppIcon.icns $STAGE/.VolumeIcon.icns; SetFile -a C $STAGE
 hdiutil create -volname $APP -srcfolder $STAGE -ov -format UDZO "$DMG" >"$OUT/dmg.log" 2>&1 || fail "hdiutil failed, see $OUT/dmg.log"
 codesign --sign "$DEVELOPER_ID" --timestamp "$DMG" || fail "dmg signing failed"
-notarize "$DMG"
+notarize "$DMG" "$DMG"
 
 step "appcast"
 cp "$DMG" "$UPDATES/"
