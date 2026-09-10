@@ -25,6 +25,10 @@ final class AppState: ObservableObject {
         willSet { objectWillChange.send() }
         didSet { controller.muteAudioWhileFolded = muteAudioWhileFolded }
     }
+    @AppStorage("pauseMediaWhileFolded") var pauseMediaWhileFolded: Bool = false {
+        willSet { objectWillChange.send() }
+        didSet { controller.pauseMediaWhileFolded = pauseMediaWhileFolded }
+    }
 
     /// The params actually rendered. Starts from the style preset; Tuning edits persist as custom.
     @Published var params: FoldParams = .silk { didSet { persistParams() } }
@@ -54,6 +58,7 @@ final class AppState: ObservableObject {
         controller.startAngle = startAngle
         controller.endAngle = endAngle
         controller.muteAudioWhileFolded = muteAudioWhileFolded
+        controller.pauseMediaWhileFolded = pauseMediaWhileFolded
         renderer.params = params
         if DevHooks.enabled {
             DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.FluidFold.trace"), object: nil, queue: .main) { _ in

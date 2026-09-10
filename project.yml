@@ -17,6 +17,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.7.0"
+  MediaRemoteAdapter:
+    url: https://github.com/ejbills/mediaremote-adapter
+    revision: 78aae86c03adab11a7b352211cc82381737cf854
 targets:
   FluidFold:
     type: application
@@ -31,6 +34,8 @@ targets:
         buildPhase: resources
     dependencies:
       - package: Sparkle
+      - package: MediaRemoteAdapter
+        embed: true
     entitlements:
       path: FluidFold.entitlements
       properties: {}

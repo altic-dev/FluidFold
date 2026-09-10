@@ -90,7 +90,16 @@ plist="$APP_PATH/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$plist")" = "$EXPECTED_KEY" ] || fail "built SUPublicEDKey mismatch"
 [ "$(lipo -archs "$APP_PATH/Contents/MacOS/$APP")" = "x86_64 arm64" ] || fail "not universal"
 codesign --verify --deep --strict "$APP_PATH" || fail "codesign verify failed"
-[ -d "$APP_PATH/Contents/Frameworks/Sparkle.framework" ] || fail "Sparkle.framework missing"
+for fw in Sparkle MediaRemoteAdapter; do
+    fwbin="$APP_PATH/Contents/Frameworks/$fw.framework/$fw"
+    [ -f "$fwbin" ] || fail "$fw.framework missing"
+    [ "$(lipo -archs "$fwbin")" = "x86_64 arm64" ] || fail "$fw.framework is not universal"
+    codesign -dv "$fwbin" 2>&1 | grep -q "flags=.*runtime" || fail "$fw.framework lacks hardened runtime"
+    codesign -dvv "$fwbin" 2>&1 | grep -q "Authority=Developer ID Application" || fail "$fw.framework not signed with Developer ID"
+done
+[ -f "$APP_PATH/Contents/Resources/MediaRemoteAdapter_MediaRemoteAdapter.bundle/Contents/Resources/run.pl" ] \
+    || [ -f "$APP_PATH/Contents/Resources/MediaRemoteAdapter_MediaRemoteAdapter.bundle/run.pl" ] \
+    || fail "MediaRemoteAdapter resource bundle (run.pl) missing: media pause would silently do nothing"
 
 # ── Notarize ────────────────────────────────────────────────────────────────
 notarize() {   # notarize <file to submit: zip or dmg> <bundle to staple>

@@ -72,6 +72,8 @@ final class EffectController: ObservableObject {
     private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
     /// Always-on per-fold smoothness report: ~/Library/Logs/FluidFold/folds.log
     let recorder = FoldRecorder()
+    private let mediaPauser = MediaPauser()
+    var pauseMediaWhileFolded = false
     // Start-up timing, reported with each fold.
     private var captureRequestedAt: Double?
     private var firstCaptureFrameAt: Double?
@@ -604,15 +606,18 @@ final class EffectController: ObservableObject {
         if engaged && !foldedActionsDone {
             foldedActionsDone = true
             if muteAudioWhileFolded { muter.mute() }
+            if pauseMediaWhileFolded { mediaPauser.pause() }
         } else if !engaged && foldedActionsDone && frame < 20 {
             foldedActionsDone = false
             muter.unmute()
+            mediaPauser.resume()
         }
     }
 
     /// Quit while folded: restore audio so a mute never outlives the app.
     func prepareForTermination() {
         muter.unmute()
+        mediaPauser.resume()
     }
 
     /// Displays changed (lid clamshell, external monitor plugged/unplugged). Drop any fold in progress; the
@@ -624,6 +629,7 @@ final class EffectController: ObservableObject {
     private func hideOverlay() {
         foldedActionsDone = false
         muter.unmute()
+        mediaPauser.resume()
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
         dlog(String(format: "fold done: %.2fs, %d frames drawn, timeline %d frames", CACurrentMediaTime() - foldStartTime, framesShownThisFold, timeline.frameCount))
         recorder.end(at: CACurrentMediaTime())

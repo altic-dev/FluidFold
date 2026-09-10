@@ -59,11 +59,12 @@ struct GeneralPane: View {
             }
 
             Section {
+                Toggle("Pause media", isOn: $state.pauseMediaWhileFolded).toggleStyle(.switch)
                 Toggle("Mute audio", isOn: $state.muteAudioWhileFolded).toggleStyle(.switch)
             } header: {
                 Text("While folded")
             } footer: {
-                Text("Kicks in as soon as the fold starts and is undone when you open the lid. A mute you set yourself is left alone.")
+                Text("Kick in as soon as the fold starts and are undone when you open the lid. Only media that was playing is paused, and a mute you set yourself is left alone.")
             }
 
             Section {

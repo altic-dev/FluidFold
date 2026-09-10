@@ -16,7 +16,7 @@ Nothing is recorded or uploaded. One snapshot of your desktop is taken as the li
 
 - Style (Silk, Shade, Frost), blur, shadow.
 - Start angle, launch at login, automatic updates.
-- While folded: mute audio.
+- While folded: pause media, mute audio.
 - Click or press Esc to dismiss a fold until the lid reopens.
 
 ## Build
