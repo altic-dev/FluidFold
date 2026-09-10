@@ -23,3 +23,9 @@ lid-calibration/
 # System
 .DS_Store
 .swiftpm/
+
+# Working notes (local only)
+PLAN.md
+TRACKING.md
+docs/
+notes/
