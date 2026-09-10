@@ -25,13 +25,24 @@ Nothing is recorded or uploaded. macOS 14+, Apple Silicon.
 
 ## How the effect works
 
-Frosted-glass reprojection, adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation):
-the desktop stays on the plane where the screen was when the effect started, the eye stays put, and only the
-glass (the lid) rotates about the bottom hinge. Each pixel casts a ray from the eye through the tilted glass to the
-desktop plane, samples there, and blurs/darkens in proportion to the glass-to-plane gap. The sensor uses its fine-angle report with a calibrated 0.20° resting deadband. Each accepted reading
-sets the fold position directly; there is no playback timer, spring, interpolation, or prediction.
-Capture refreshes the live desktop without advancing the fold. Metal drawable acquisition and encoding run on a dedicated
-queue with a bounded, latest-request policy. Settings previews have separate renderers.
+**Timeline model.** The fold is a fixed timeline from the start angle A (frame 0, flat) to the end angle B
+(last frame). The lid is the playhead: closing plays forward, opening rewinds, and the same angle always shows
+the same frame. One desktop snapshot is frozen when the fold appears, and every frame is computed from it, so
+forward and rewind are identical. Frames are computed on demand (~2.5 ms on the GPU) instead of being stored,
+which gives the same result as pre-rendering without the ~3 GB of memory.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `degreesPerFrame` | 0.05° | Timeline resolution. A=95°, B=25° gives 1400 frames |
+| Tracker deadband | 0.2° | Resting sensor jitter never moves the playhead |
+
+**Playhead.** The hinge sensor publishes ~10 readings/s. Between readings the playhead follows a cubic glide:
+it passes exactly through each reading, keeps speed continuous, eases into a stop, and never overshoots.
+It trails the lid by about one sensor interval (~110 ms). A frame is drawn only when the frame number changes.
+
+**Look.** Frosted-glass reprojection, adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah-semyonov/DuoLikeAnimation):
+the glass (lid) rotates about the bottom hinge; each pixel casts a ray from the eye through the tilted glass to the
+desktop plane and blurs/darkens in proportion to the glass-to-plane gap.
 
 ## Tuning the graphics (the part meant to be iterated on)
 
@@ -61,6 +72,9 @@ Note: MTKView presents stale surfaces on macOS 27 beta, so `FoldMetalView` drive
 ## Debugging
 
 ```bash
+scripts/sweep.sh 1.5                                      # fake lid sweep at the real sensor cadence
+scripts/trace_tracking.sh && scripts/sweep.sh && python3 scripts/analyze_sweep.py   # frames, stalls
+defaults write com.altic.Duofy debugHUD -bool true        # on-screen frame / sensor readout (costs frames)
 defaults write com.altic.Duofy debugLog -bool true        # ~/Library/Logs/Duofy.log
 defaults write com.altic.Duofy debugDumpDir "$PWD/build"  # writes build/duofy_frame.png at mid-sweep
 ./scripts/preview.sh

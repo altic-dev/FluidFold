@@ -29,7 +29,7 @@ final class FoldRenderer: NSObject {
     private var textureCache: CVMetalTextureCache?
     private let startTime = CACurrentMediaTime()
     /// One encode/GPU submission at a time; a single pending request always uses the newest inputs.
-    private let inflight = DispatchSemaphore(value: 1)
+    private let inflight = DispatchSemaphore(value: 2)
     private let renderQueue = DispatchQueue(label: "duofy.render", qos: .userInteractive)
     private var pendingLayer: CAMetalLayer?
     private(set) var droppedFrames = 0
@@ -209,22 +209,25 @@ final class FoldRenderer: NSObject {
         TrackingTrace.shared.record("draw", id: frameID, time: drawStart,
                                     values: [Double(sampleID), CACurrentMediaTime(), tiltDegrees ?? -1, progress,
                                              input.sourceTimestamp, Double(drawable.texture.width), Double(drawable.texture.height)])
+        let permit = inflight
+        // A frame stays "in flight" until the display is done with it (shown or discarded). Releasing on GPU
+        // completion instead lets us queue frames faster than the screen shows them, which starves the
+        // drawable pool and blocks nextDrawable() for tens of milliseconds.
         drawable.addPresentedHandler { surface in
+            permit.signal()
             TrackingTrace.shared.record("presented", id: frameID,
                                         values: [Double(sampleID), surface.presentedTime])
+            DispatchQueue.main.async { [weak self] in self?.renderPendingFrame() }
         }
         cmd.addCompletedHandler { cb in
             TrackingTrace.shared.record("gpu", id: frameID,
                                         values: [Double(sampleID), cb.gpuStartTime, cb.gpuEndTime, Double(cb.status.rawValue)])
         }
-        let permit = inflight
         cmd.addCompletedHandler { [weak self] cb in
-            permit.signal()
             let duration = (cb.gpuEndTime - cb.gpuStartTime) * 1000
             let completed = CACurrentMediaTime()
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.renderPendingFrame()
                 self.fpsCount += 1
                 self.gpuMs = duration
                 if completed - self.fpsWindowStart >= 1 {
@@ -332,7 +335,7 @@ final class FoldMetalView: NSView {
         let l = CAMetalLayer()
         l.device = renderer.device
         l.pixelFormat = .bgra8Unorm
-        l.maximumDrawableCount = 2
+        l.maximumDrawableCount = 3
         l.isOpaque = true
         l.backgroundColor = CGColor(gray: 0, alpha: 1)
         l.framebufferOnly = renderer.debugDumpDir == nil

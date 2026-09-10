@@ -32,22 +32,33 @@ final class EffectController: ObservableObject {
     private var pendingShow = false
     private var previewReference: Double?
 
-    // Interpolation: the sensor publishes ~10 values/s; frames are drawn at display rate between them.
-    // The displayed angle moves linearly from where it is to the newest reading over one sensor interval,
-    // so it lands exactly on the reading and stops there. No overshoot, no settling tail.
-    private(set) var displayedAngle: Double = 120
-    private var interpFrom: Double = 120
-    private var interpTo: Double = 120
-    private var interpStart: Double = 0
-    private var interpDuration: Double = 0.1
+    /// Degrees of lid travel per timeline frame.
+    var degreesPerFrame: Double = UserDefaults.standard.double(forKey: "degreesPerFrame").nonZero ?? 0.05
+    private var timeline: FoldTimeline { FoldTimeline(startAngle: referenceAngle, endAngle: endAngle, degreesPerFrame: degreesPerFrame) }
+
+    // Playhead: the sensor publishes ~10 readings/s. Between readings the playhead glides linearly to the
+    // target frame over one sensor interval, stepping through every frame in between, and stops exactly on it.
+    private(set) var playhead: Double = 0
+    private var glideFrom: Double = 0
+    private var glideTo: Double = 0
+    private var glideStart: Double = 0
+    private var glideDuration: Double = 0.1
+    private var glideFromVelocity: Double = 0     // frames/s at glide start (continuity with the previous glide)
+    private var glideToVelocity: Double = 0       // estimated lid speed at the target, frames/s
+    private var playheadVelocity: Double = 0
+    private var lastTarget: Double = 0
+    private var readingInterval: Double = 0.1     // smoothed sensor cadence
+    private var shownFrame = -1
     private var lastSampleTime: Double = CACurrentMediaTime()
     private var displayLink: CADisplayLink?
     private var hideWhenSettled = false
     private var lastSampleID: UInt64 = 0
-    private var lastFPSCheck = CACurrentMediaTime()
-    private var tickCount = 0
-    private var displayFPS = 0.0
+    private var framesShownThisFold = 0
+    private var foldStartTime: Double = 0
     private let hudEnabled = UserDefaults.standard.bool(forKey: "debugHUD")
+    /// Debug: while fake readings are being injected, real sensor samples are ignored.
+    private var injectingUntil: Double = 0
+
     private var referenceAngle: Double { previewReference ?? startAngle }
     private var active: Bool { isEnabled && !isPaused && armed }
     private var wantsOverlay: Bool { active && (isLivePreview || angle < referenceAngle) }
@@ -64,20 +75,33 @@ final class EffectController: ObservableObject {
         self.renderer = renderer
         renderer.debugLog = UserDefaults.standard.bool(forKey: "debugLog")
         sensorAvailable = sensor.isAvailable
-        sensor.onSample = { [weak self] sample in self?.receive(sample) }
+        sensor.onSample = { [weak self] sample in
+            guard let self, CACurrentMediaTime() >= self.injectingUntil else { return }
+            self.receive(sample)
+        }
+        // Debug: `scripts/sweep.sh` runs a fake lid sweep in-process at the real sensor cadence (10 Hz).
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.sweep"), object: nil, queue: .main) { [weak self] note in
+            let seconds = (note.object as? String).flatMap(Double.init) ?? 1.5
+            self?.runFakeSweep(secondsPerDirection: seconds)
+        }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.altic.Duofy.inject"), object: nil, queue: .main) { [weak self] note in
+            guard let self, let value = (note.object as? String).flatMap(Double.init) else { return }
+            self.injectingUntil = CACurrentMediaTime() + 1.5
+            self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: value.rounded(), fine: value, fused: value))
+        }
         capturer.onFrame = { [weak self] buffer, timestamp in
             let received = CACurrentMediaTime()
             DispatchQueue.main.async {
                 guard let self else { return }
                 TrackingTrace.shared.record("capture_main", values: [received])
+                // Frozen snapshot: once the fold is showing, the picture never changes. Every frame of the
+                // timeline is computed from the same snapshot, so forward and rewind show identical frames.
+                guard !self.isShowing else { return }
                 self.renderer.setSource(pixelBuffer: buffer, timestamp: timestamp)
                 self.hasFrame = true
                 if self.pendingShow {
                     self.pendingShow = false
                     if self.wantsOverlay { self.presentOverlay() }
-                } else if self.isShowing {
-                    // A new desktop frame never changes tilt or progress.
-                    self.overlay.metalView.requestRender()
                 }
             }
         }
@@ -100,17 +124,36 @@ final class EffectController: ObservableObject {
                 guard let self else { return }
                 if let sample = self.sensor.readSample() { self.receive(sample) }
                 TrackingTrace.shared.record("wake", values: [self.angle])
-                if self.isShowing { Task { await self.capturer.start() } }
+                // The snapshot survives sleep, so reopening just rewinds the timeline.
                 self.evaluate()
             }
         }
         capturer.onStopped = { [weak self] in
-            guard let self, self.wantsOverlay else { return }
+            guard let self, self.wantsOverlay, !self.isShowing else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self, self.wantsOverlay else { return }
+                guard let self, self.wantsOverlay, !self.isShowing else { return }
                 Task { await self.capturer.start() }
             }
         }
+    }
+
+    private var fakeSweepTimer: Timer?
+
+    /// Debug: 105° → 20°, hold 1 s, → 105°, one reading every 100 ms like the hinge sensor.
+    private func runFakeSweep(secondsPerDirection: Double) {
+        fakeSweepTimer?.invalidate()
+        let steps = max(Int(secondsPerDirection * 10), 1)
+        var readings: [Double] = (0...steps).map { 105 - 85 * Double($0) / Double(steps) }
+        readings += Array(repeating: 20, count: 10)
+        readings += (0...steps).map { 20 + 85 * Double($0) / Double(steps) }
+        var i = 0
+        fakeSweepTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] t in
+            guard let self, i < readings.count else { t.invalidate(); return }
+            self.injectingUntil = CACurrentMediaTime() + 1.5
+            let v = readings[i]; i += 1
+            self.receive(LidAngleSensor.Sample(id: self.lastSampleID &+ 1, time: CACurrentMediaTime(), coarse: v.rounded(), fine: v, fused: v))
+        }
+        RunLoop.main.add(fakeSweepTimer!, forMode: .common)
     }
 
     private func receive(_ sample: LidAngleSensor.Sample) {
@@ -122,8 +165,15 @@ final class EffectController: ObservableObject {
             lastSampleID = sample.id
             let now = CACurrentMediaTime()
             angle = target
-            // Aim the displayed angle at the new reading over roughly one sensor interval.
-            startInterpolation(to: target, duration: min(max(now - lastSampleTime, 0.04), 0.15), now: now)
+            // Glide the playhead to the new reading's frame over about one sensor interval (+10% so it rarely
+            // arrives before the next reading and has to stop).
+            let interval = min(max(now - lastSampleTime, 0.05), 0.2)
+            readingInterval = readingInterval * 0.7 + interval * 0.3
+            let targetFrame = timeline.playhead(for: target)
+            // Lid speed at the target: 0 when the reading repeats (lid stopped), so the glide eases into a stop.
+            let lidVelocity = (targetFrame - lastTarget) / readingInterval
+            lastTarget = targetFrame
+            glide(to: targetFrame, endVelocity: lidVelocity, duration: readingInterval * 1.1, now: now)
             lastSampleTime = now
             evaluate()
         }
@@ -168,26 +218,52 @@ final class EffectController: ObservableObject {
         } else {
             pendingShow = false
             if isShowing && !hideWhenSettled {
-                // Glide back to tilt 0 first; at tilt 0 the overlay equals the live screen, so the hide is invisible.
+                // Rewind to frame 0 first; frame 0 equals the live screen, so the hide is invisible.
                 hideWhenSettled = true
-                startInterpolation(to: referenceAngle, duration: 0.12, now: CACurrentMediaTime())
+                glide(to: 0, endVelocity: 0, duration: 0.15, now: CACurrentMediaTime())
                 ensureDisplayLink()
             }
         }
-        if !active || angle > referenceAngle + prewarmDegrees + 5 && !isLivePreview {
+        if isShowing {
+            // Frozen snapshot in use; no capture while the fold is on screen.
+        } else if !active || angle > referenceAngle + prewarmDegrees + 5 && !isLivePreview {
             capturer.stop()
             hasFrame = false
-        } else if !isShowing && !pendingShow && angle < referenceAngle + prewarmDegrees {
+        } else if !pendingShow && angle < referenceAngle + prewarmDegrees {
             Task { await capturer.start() }
         }
     }
 
-    private func startInterpolation(to target: Double, duration: Double, now: Double) {
-        interpFrom = displayedAngle
-        interpTo = target
-        interpStart = now
-        interpDuration = duration
+    /// Cubic (Hermite) glide: position and speed are continuous across readings, it passes exactly through
+    /// each reading, and it is clamped between start and target so it never overshoots.
+    private func glide(to target: Double, endVelocity: Double, duration: Double, now: Double) {
+        // Start from where the current glide is *now*, not where it was at the last vsync.
+        if displayLink != nil {
+            let g = glidePosition(at: now)
+            playhead = g.position
+            playheadVelocity = g.velocity
+        }
+        glideFrom = playhead
+        glideFromVelocity = playheadVelocity
+        glideTo = target
+        // Only carry speed in the direction of travel; a reversal or a stop starts/ends at rest.
+        let dir = target - playhead
+        glideToVelocity = dir * endVelocity > 0 ? endVelocity : 0
+        if dir * glideFromVelocity < 0 { glideFromVelocity = 0 }
+        glideStart = now
+        glideDuration = duration
         if isShowing { ensureDisplayLink() }
+    }
+
+    private func glidePosition(at now: Double) -> (position: Double, velocity: Double, done: Bool) {
+        let T = max(glideDuration, 1e-3)
+        let s = min(max((now - glideStart) / T, 0), 1)
+        let s2 = s * s, s3 = s2 * s
+        let p0 = glideFrom, p1 = glideTo, m0 = glideFromVelocity * T, m1 = glideToVelocity * T
+        var p = (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1
+        let v = ((6 * s2 - 6 * s) * p0 + (3 * s2 - 4 * s + 1) * m0 + (-6 * s2 + 6 * s) * p1 + (3 * s2 - 2 * s) * m1) / T
+        p = min(max(p, min(p0, p1)), max(p0, p1))
+        return (p, s >= 1 ? 0 : v, s >= 1)
     }
 
     private func ensureDisplayLink() {
@@ -203,39 +279,37 @@ final class EffectController: ObservableObject {
 
     @objc private func displayTick(_ link: CADisplayLink) {
         let now = CACurrentMediaTime()
-        let t = interpDuration > 0 ? min(max((now - interpStart) / interpDuration, 0), 1) : 1
-        displayedAngle = interpFrom + (interpTo - interpFrom) * t
-        applyPose(displayedAngle, now: now)
-        if t >= 1 {
+        let g = glidePosition(at: now)
+        playhead = g.position
+        playheadVelocity = g.velocity
+        show(frame: Int(playhead.rounded()), now: now)
+        if g.done {
             if hideWhenSettled {
                 hideWhenSettled = false
                 let opened = active && minAngleSeen < startAngle - 10
                 hideOverlay(playSound: opened)
+                return
             }
-            stopDisplayLink()   // static lid: capture frames alone drive redraws
+            stopDisplayLink()   // lid is still: nothing to draw until the next reading
         }
     }
 
-    /// Renders the fold for a displayed angle. The pose is a pure function of that angle.
-    private func applyPose(_ shown: Double, now: Double) {
-        let pose = LidPose(angle: shown, referenceAngle: referenceAngle, endAngle: endAngle)
+    /// Draws a timeline frame. Frames are only drawn when the frame number changes.
+    private func show(frame: Int, now: Double, force: Bool = false) {
+        guard force || frame != shownFrame else { return }
+        shownFrame = frame
+        framesShownThisFold += 1
+        let pose = timeline.pose(frame: frame)
         renderer.progress = pose.progress
         renderer.tiltDegrees = pose.tiltDegrees
-        TrackingTrace.shared.record("effect_update", id: renderer.sensorSampleID,
-                                    values: [shown, pose.tiltDegrees, pose.progress, referenceAngle, endAngle, angle])
-        if hudEnabled { updateHUD(now: now, pose: pose) }
-        overlay.metalView.requestRender()
-    }
-
-    private func updateHUD(now: Double, pose: LidPose) {
-        tickCount += 1
-        if now - lastFPSCheck >= 0.5 {
-            displayFPS = Double(tickCount) / (now - lastFPSCheck)
-            tickCount = 0; lastFPSCheck = now
+        TrackingTrace.shared.record("timeline_frame", id: renderer.sensorSampleID,
+                                    values: [Double(frame), Double(timeline.frameCount), playhead, glideTo, angle, pose.tiltDegrees])
+        if hudEnabled {
+            overlay.hudText = String(format: "frame %d / %d   target %.0f   sensor #%llu  %.2f°   tilt %.1f°   %.0f ms since reading   drawn this fold %d   gpu %.1f ms",
+                                     frame, timeline.frameCount, glideTo.rounded(), lastSampleID, angle, pose.tiltDegrees,
+                                     (now - lastSampleTime) * 1000, framesShownThisFold, renderer.gpuMs)
         }
-        overlay.hudText = String(format: "frame %llu   sensor #%llu   sensor %.2f°   shown %.2f°   behind %+.2f°   tilt %.2f°   p %.3f   %.0f ms since sample   %.0f fps   gpu %.1f ms",
-                                 TrackingTrace.shared.currentFrameID, lastSampleID, angle, displayedAngle, displayedAngle - angle,
-                                 pose.tiltDegrees, pose.progress, (now - lastSampleTime) * 1000, displayFPS, renderer.gpuMs)
+        overlay.metalView.requestRender()
     }
 
     private func showOverlay() {
@@ -250,11 +324,18 @@ final class EffectController: ObservableObject {
         isShowing = true
         renderer.resetDump()
         minAngleSeen = angle
-        // Crossing the threshold from above: first frame at tilt 0 (identical to the live screen), then glide in.
-        // Re-appearing further in (after wake or live preview): start at the real angle.
-        displayedAngle = angle > referenceAngle - 3 ? referenceAngle : angle
-        startInterpolation(to: angle, duration: 0.1, now: CACurrentMediaTime())
-        applyPose(displayedAngle, now: CACurrentMediaTime())
+        framesShownThisFold = 0
+        foldStartTime = CACurrentMediaTime()
+        // Crossing the threshold from above: frame 0 first (identical to the live screen), then glide in.
+        let target = timeline.playhead(for: angle)
+        playhead = target < 15 ? 0 : target
+        playheadVelocity = 0
+        lastTarget = playhead
+        glide(to: target, endVelocity: 0, duration: 0.1, now: foldStartTime)
+        show(frame: Int(playhead.rounded()), now: foldStartTime, force: true)
+        // Freeze: the pending capture frame becomes the snapshot; stop capturing while the fold is up.
+        capturer.stop()
+        hasFrame = false
         overlay.metalView.renderScale = CGFloat(UserDefaults.standard.double(forKey: "renderScale").nonZero
                                                 ?? (OverlayWindow.builtInScreen()?.backingScaleFactor ?? 2))
         overlay.show()
@@ -263,7 +344,12 @@ final class EffectController: ObservableObject {
 
     private func hideOverlay(playSound: Bool) {
         TrackingTrace.shared.record("overlay_hide", values: [angle, renderer.tiltDegrees ?? 0])
+        dlog(String(format: "fold done: %.2fs, %d frames drawn, timeline %d frames", CACurrentMediaTime() - foldStartTime, framesShownThisFold, timeline.frameCount))
         isShowing = false
+        shownFrame = -1
+        playhead = 0
+        playheadVelocity = 0
+        lastTarget = 0
         hideWhenSettled = false
         stopDisplayLink()
         overlay.hide()
