@@ -43,6 +43,10 @@ final class EffectController: ObservableObject {
         renderer.debugLog = UserDefaults.standard.bool(forKey: "debugLog")
         sensorAvailable = sensor.isAvailable
         sensor.onAngle = { [weak self] a in self?.angleChanged(a) }
+        sensor.onSample = { [weak self] s in
+            guard let self, self.renderer.debugLog else { return }
+            dlog(String(format: "angle coarse=%.0f fine=%@ fused=%.2f smoothed=%.2f showing=%d", s.coarse, s.fine.map { String(format: "%.2f", $0) } ?? "nil", s.fused, self.smoothedAngle, self.isShowing ? 1 : 0))
+        }
         capturer.onFrame = { [weak self] pb in
             DispatchQueue.main.async {
                 guard let self else { return }
