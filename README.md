@@ -37,4 +37,4 @@ Effect adapted from [elijah-semyonov/DuoLikeAnimation](https://github.com/elijah
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](LICENSE).
