@@ -64,7 +64,7 @@ struct GeneralPane: View {
             } header: {
                 Text("While folded")
             } footer: {
-                Text("Kick in as soon as the fold starts and are undone when you open the lid. Only media that was playing is paused, and a mute you set yourself is left alone.")
+                Text("Kick in once the fold is clearly visible and are undone when you open the lid. Only media that was playing is paused, and a mute you set yourself is left alone.")
             }
 
             Section {
