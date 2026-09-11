@@ -12,7 +12,7 @@ final class EffectController: ObservableObject {
     @Published var isEnabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: "enabled")
-            if sensorAvailable { isEnabled ? sensor.start() : sensor.stop() }
+            if sensorAvailable { isEnabled ? sensor.start(hz: 200) : sensor.stop() }
             evaluate()
         }
     }
@@ -60,6 +60,7 @@ final class EffectController: ObservableObject {
     var maxExtrapolation: Double = UserDefaults.standard.double(forKey: "maxExtrapolation").nonZero ?? 0.35
     private var lastRawReadingTime: Double = 0
     private var lastSnappedTime: Double = 0
+    private var cadence: Double = 0.1
     private var glideTo: Double = 0          // latest reading's frame (the point the playhead is heading to)
     private var holdingBeyond = false        // extrapolated past the last reading and waiting
     private var shownFrame = -1
@@ -257,7 +258,7 @@ final class EffectController: ObservableObject {
             angle = tracker.ingest(coarse: sample.coarse, fine: sample.fine)
             renderer.sensorSampleID = sample.id
         }
-        if sensorAvailable && isEnabled { sensor.start() }
+        if sensorAvailable && isEnabled { sensor.start(hz: 200) }
         evaluate()
         if sensorAvailable { warmUp() }
         overlay.onScreensChanged = { [weak self] in self?.screensChanged() }
@@ -405,11 +406,14 @@ final class EffectController: ObservableObject {
     /// so the same 100 ms sensor tick is seen 100 or 117 ms after the previous one; using poll times would make
     /// alternate segments 17% faster or slower than the lid.
     private func appendReading(frame: Double, at now: Double) {
+        // The sensor reports on its own clock (~103 ms period, not exactly 100). Snap timestamps to a running
+        // estimate of that period so polling jitter never shows up as speed changes, and resync if we drift.
         var t = now
         let gap = now - lastRawReadingTime
-        if lastSnappedTime > 0 && gap > 0.085 && gap < 0.135 {
-            t = lastSnappedTime + 0.1
-            if abs(t - now) > 0.04 { t = now }          // drifted: resync to the measured time
+        if lastSnappedTime > 0 && gap > 0.07 && gap < 0.15 {
+            cadence = cadence * 0.85 + gap * 0.15
+            t = lastSnappedTime + cadence
+            if abs(t - now) > 0.025 { t = now }
         }
         lastRawReadingTime = now
         lastSnappedTime = t

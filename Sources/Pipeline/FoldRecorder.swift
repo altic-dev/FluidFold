@@ -13,7 +13,16 @@ import AppKit
 @MainActor
 final class FoldRecorder {
     struct Reading { let t: Double; let angle: Double; let target: Double }
-    struct Tick { let t: Double; let playhead: Double; let frame: Int; let target: Double }
+    struct Tick { let t: Double; let playhead: Double; let frame: Int; let target: Double; let brightness: Float }
+
+    /// Panel brightness, to correlate window-server compositing flips with auto-brightness / True Tone adjustments.
+    private static let getBrightness: ((CGDirectDisplayID) -> Float)? = {
+        typealias Fn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+        guard let h = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW),
+              let sym = dlsym(h, "DisplayServicesGetBrightness") else { return nil }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        return { id in var b: Float = -1; _ = fn(id, &b); return b }
+    }()
 
     private(set) var active = false
     private var foldNumber = UserDefaults.standard.integer(forKey: "foldReportCounter")
@@ -61,7 +70,8 @@ final class FoldRecorder {
 
     func tick(now: Double, playhead: Double, frame: Int, target: Double) {
         guard active, ticks.count < cap else { return }
-        ticks.append(Tick(t: now, playhead: playhead, frame: frame, target: target))
+        ticks.append(Tick(t: now, playhead: playhead, frame: frame, target: target,
+                          brightness: Self.getBrightness?(CGMainDisplayID()) ?? -1))
     }
 
     func frame(_ f: FoldRenderer.FrameTiming) {
@@ -210,6 +220,11 @@ final class FoldRecorder {
         report += String(format: "  speed wobble %.0f%%   playhead lag avg %.2f° max %.2f°   request→screen p50 %.1f ms\n",
                          wobble * 100, (lagFrames.isEmpty ? 0 : lagFrames.reduce(0, +) / Double(lagFrames.count)) * degPerFrame,
                          (lagFrames.max() ?? 0) * degPerFrame, p50lat * 1000)
+        let levels = ticks.map(\.brightness).filter { $0 >= 0 }
+        if let lo = levels.min(), let hi = levels.max() {
+            let changes = zip(levels, levels.dropFirst()).filter { abs($0 - $1) > 0.0005 }.count
+            report += String(format: "  brightness during fold: %.3f–%.3f, %d changes\n", lo, hi, changes)
+        }
         report += String(format: "  worst: drawable wait %.1f ms   GPU queue %.1f ms   GPU %.1f ms\n", maxWait * 1000, maxQueue * 1000, maxGPU * 1000)
         if !notes.isEmpty { report += "  events: " + notes.joined(separator: "  ") + "\n" }
         let ps = periods.map(\.p)
@@ -218,7 +233,7 @@ final class FoldRecorder {
         }
         report += "  VERDICT: \(verdict)\n\n"
 
-        let tickRows = ["t_ms,playhead,frame,target"] + ticks.map { String(format: "%.1f,%.1f,%d,%.1f", ($0.t - start) * 1000, $0.playhead, $0.frame, $0.target) }
+        let tickRows = ["t_ms,playhead,frame,target,brightness"] + ticks.map { String(format: "%.1f,%.1f,%d,%.1f,%.4f", ($0.t - start) * 1000, $0.playhead, $0.frame, $0.target, $0.brightness) }
             + readings.map { String(format: "%.1f,READING,%.2f,%.1f", ($0.t - start) * 1000, $0.angle, $0.target) }
         write(report: report, csv: rows.joined(separator: "\n"), ticksCSV: tickRows.joined(separator: "\n"), number: foldNumber)
         dlog(report.trimmingCharacters(in: .whitespacesAndNewlines))
