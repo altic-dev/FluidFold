@@ -39,7 +39,7 @@ if [ -n "$LATEST_TAG" ]; then
 fi
 
 xcrun notarytool history --keychain-profile "$NOTARIZATION_PROFILE" >/dev/null 2>&1 || fail "notarytool profile '$NOTARIZATION_PROFILE' missing"
-security find-identity -v -p codesigning | grep -q "$DEVELOPER_ID" || fail "signing identity not in keychain: $DEVELOPER_ID"
+ids="$(security find-identity -v -p codesigning)"; [[ "$ids" == *"$DEVELOPER_ID"* ]] || fail "signing identity not in keychain: $DEVELOPER_ID"
 command -v xcodegen >/dev/null || fail "brew install xcodegen"
 [ -n "${DEVELOPER_DIR:-}" ] || export DEVELOPER_DIR="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
 source scripts/ensure_codesign_keychain.sh
@@ -95,7 +95,7 @@ for fw in Sparkle MediaRemoteAdapter; do
     [ -f "$fwbin" ] || fail "$fw.framework missing"
     [ "$(lipo -archs "$fwbin")" = "x86_64 arm64" ] || fail "$fw.framework is not universal"
     sig="$(codesign -dv "$fwbin" 2>&1)"; [[ "$sig" == *"(runtime)"* ]] || fail "$fw.framework lacks hardened runtime"
-    codesign -dvv "$fwbin" 2>&1 | grep -q "Authority=Developer ID Application" || fail "$fw.framework not signed with Developer ID"
+    sigv="$(codesign -dvv "$fwbin" 2>&1)"; [[ "$sigv" == *"Authority=Developer ID Application"* ]] || fail "$fw.framework not signed with Developer ID"
 done
 [ -f "$APP_PATH/Contents/Resources/MediaRemoteAdapter_MediaRemoteAdapter.bundle/Contents/Resources/run.pl" ] \
     || [ -f "$APP_PATH/Contents/Resources/MediaRemoteAdapter_MediaRemoteAdapter.bundle/run.pl" ] \
