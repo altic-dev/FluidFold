@@ -12,7 +12,7 @@ final class EffectController: ObservableObject {
     @Published var isEnabled = UserDefaults.standard.object(forKey: "enabled") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: "enabled")
-            if sensorAvailable { isEnabled ? sensor.start(hz: 200) : sensor.stop() }
+            if sensorAvailable { isEnabled ? sensor.start() : sensor.stop() }
             evaluate()
         }
     }
@@ -258,7 +258,7 @@ final class EffectController: ObservableObject {
             angle = tracker.ingest(coarse: sample.coarse, fine: sample.fine)
             renderer.sensorSampleID = sample.id
         }
-        if sensorAvailable && isEnabled { sensor.start(hz: 200) }
+        if sensorAvailable && isEnabled { sensor.start() }
         evaluate()
         if sensorAvailable { warmUp() }
         overlay.onScreensChanged = { [weak self] in self?.screensChanged() }

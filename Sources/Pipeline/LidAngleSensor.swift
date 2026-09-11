@@ -76,23 +76,34 @@ final class LidAngleSensor {
         return Sample(id: nextID, time: end, coarse: coarse, fine: fine, fused: fused)
     }
 
-    func start(hz: Double = 60) {
+    /// Polls slowly at rest and fast while the lid moves: fast polling gives accurate reading timestamps
+    /// (the sensor's own cadence is ~100 ms; the poll interval is the timestamp error), slow polling keeps idle CPU low.
+    func start(hz: Double = 60, movingHz: Double = 200) {
         stop()
+        restHz = hz; boostHz = movingHz
         let t = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hinge.lid", qos: .userInteractive))
-        t.schedule(deadline: .now(), repeating: 1.0 / hz)
         t.setEventHandler { [weak self] in
             guard let self, let s = self.readSample() else { return }
             // Deadband: ignore the ±0.08° flicker of the fine report at rest.
             let changed = abs(s.fused - self.lastFused) >= 0.1
-            if changed { self.lastFused = s.fused }
+            if changed { self.lastFused = s.fused; self.lastChangeAt = s.time }
+            if changed && !self.boosted { self.setRate(self.boostHz) }
+            else if self.boosted && s.time - self.lastChangeAt > 1.5 { self.setRate(self.restHz) }
             DispatchQueue.main.async {
                 TrackingTrace.shared.record("sensor_main", id: s.id, values: [s.time, changed ? 1 : 0])
                 self.onSample?(s)
                 if changed { self.onAngle?(s.fused) }
             }
         }
-        t.resume()
         timer = t
+        setRate(hz)
+        t.resume()
+    }
+
+    private var restHz = 60.0, boostHz = 200.0, boosted = false, lastChangeAt = 0.0
+    private func setRate(_ hz: Double) {
+        boosted = hz == boostHz
+        timer?.schedule(deadline: .now(), repeating: 1.0 / hz, leeway: .milliseconds(hz > 100 ? 1 : 4))
     }
 
     func stop() { timer?.cancel(); timer = nil }
