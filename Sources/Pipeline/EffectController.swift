@@ -441,12 +441,24 @@ final class EffectController: ObservableObject {
             let p = last.frame + v * over
             return (min(max(p, 0), Double(timeline.frameCount)), tau - last.t >= segDur * maxExtrapolation)
         }
-        // Inside the recorded track: linear between the two readings around tau.
+        // Inside the recorded track: monotone cubic (Fritsch–Carlson) between the two readings around tau, so the
+        // speed is continuous across readings instead of stepping every 100 ms, and it never overshoots a reading.
         var i = track.count - 2
         while i > 0 && track[i].t > tau { i -= 1 }
         let a = track[i], b = track[i + 1]
-        let f = (tau - a.t) / max(b.t - a.t, 0.001)
-        return (a.frame + (b.frame - a.frame) * f, false)
+        let h = max(b.t - a.t, 0.001)
+        let f = (tau - a.t) / h
+        let slope = (b.frame - a.frame) / h
+        func tangent(_ s0: Double?, _ s1: Double) -> Double {
+            guard let s0, s0 * s1 > 0 else { return s0 == nil ? s1 : 0 }
+            return 2 / (1 / s0 + 1 / s1)                       // harmonic mean keeps the curve monotone
+        }
+        let sBefore: Double? = i > 0 ? (a.frame - track[i - 1].frame) / max(a.t - track[i - 1].t, 0.001) : nil
+        let sAfter: Double? = i + 2 < track.count ? (track[i + 2].frame - b.frame) / max(track[i + 2].t - b.t, 0.001) : nil
+        let m0 = tangent(sBefore, slope) * h, m1 = tangent(sAfter, slope) * h
+        let f2 = f * f, f3 = f2 * f
+        let p = (2 * f3 - 3 * f2 + 1) * a.frame + (f3 - 2 * f2 + f) * m0 + (-2 * f3 + 3 * f2) * b.frame + (f3 - f2) * m1
+        return (p, false)
     }
 
     private func ensureDisplayLink() {
