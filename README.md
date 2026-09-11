@@ -2,7 +2,7 @@
 
 Your desktop folds with your MacBook lid. A tiny menu bar app that tilts, blurs, and dims the screen in sync with the hinge angle.
 
-[**Download**](https://github.com/altic-dev/FluidFold/releases/latest) · macOS 15.2+ · MacBooks with a hinge sensor (2019 and later)
+[**altic.dev/FluidFold**](https://www.altic.dev/FluidFold) · [**Download**](https://github.com/altic-dev/FluidFold/releases/latest) · macOS 15.2+ · MacBooks with a hinge sensor (2019 and later)
 
 Nothing is recorded or uploaded. One snapshot of your desktop is taken as the lid starts to close and rendered on the GPU.
 
