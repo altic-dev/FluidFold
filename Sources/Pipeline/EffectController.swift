@@ -623,11 +623,11 @@ final class EffectController: ObservableObject {
         ensureDisplayLink()
     }
 
-    /// Actions kick in once the fold is visibly under way (the frost eases in over the first ~18°, so 20° is where
-    /// the screen clearly reads as folded) and are undone when the lid comes back past 16°, or when the fold hides.
+    /// Actions kick in once the fold is visibly under way (the frost eases in over the first ~18°, so 10° is where
+    /// the screen clearly reads as folded) and are undone when the lid comes back past 8°, or when the fold hides.
     private func updateFoldedActions(frame: Int) {
-        let engageAt = min(Int(20 / degreesPerFrame), timeline.frameCount / 2)
-        let releaseAt = min(Int(16 / degreesPerFrame), engageAt)
+        let engageAt = min(Int(10 / degreesPerFrame), timeline.frameCount / 3)
+        let releaseAt = min(Int(8 / degreesPerFrame), engageAt)
         if frame >= engageAt && !foldedActionsDone {
             foldedActionsDone = true
             if muteAudioWhileFolded { muter.mute() }
