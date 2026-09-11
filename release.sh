@@ -94,7 +94,7 @@ for fw in Sparkle MediaRemoteAdapter; do
     fwbin="$APP_PATH/Contents/Frameworks/$fw.framework/$fw"
     [ -f "$fwbin" ] || fail "$fw.framework missing"
     [ "$(lipo -archs "$fwbin")" = "x86_64 arm64" ] || fail "$fw.framework is not universal"
-    codesign -dv "$fwbin" 2>&1 | grep -q "flags=.*runtime" || fail "$fw.framework lacks hardened runtime"
+    sig="$(codesign -dv "$fwbin" 2>&1)"; [[ "$sig" == *"(runtime)"* ]] || fail "$fw.framework lacks hardened runtime"
     codesign -dvv "$fwbin" 2>&1 | grep -q "Authority=Developer ID Application" || fail "$fw.framework not signed with Developer ID"
 done
 [ -f "$APP_PATH/Contents/Resources/MediaRemoteAdapter_MediaRemoteAdapter.bundle/Contents/Resources/run.pl" ] \
