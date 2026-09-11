@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 APP=FluidFold
-BUILD_NUMBER="$(git rev-list --count HEAD)"
+BUILD_NUMBER="$(( 900000 + $(git rev-list --count HEAD) ))"   # above any release build so Sparkle never "downgrades" a dev build
 
 [ -f xcconfig/LocalSigning.xcconfig ] || { echo "Copy xcconfig/LocalSigning.example.xcconfig to xcconfig/LocalSigning.xcconfig"; exit 1; }
 [ -n "${DEVELOPER_DIR:-}" ] || export DEVELOPER_DIR="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"

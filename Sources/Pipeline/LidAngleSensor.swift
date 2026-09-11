@@ -87,8 +87,8 @@ final class LidAngleSensor {
             // Deadband: ignore the ±0.08° flicker of the fine report at rest.
             let changed = abs(s.fused - self.lastFused) >= 0.1
             if changed { self.lastFused = s.fused; self.lastChangeAt = s.time }
-            if changed && !self.boosted { self.setRate(self.boostHz) }
-            else if self.boosted && s.time - self.lastChangeAt > 1.5 { self.setRate(self.restHz) }
+            if changed && !self.boosted { self.setRate(self.boostHz, on: t) }
+            else if self.boosted && s.time - self.lastChangeAt > 1.5 { self.setRate(self.restHz, on: t) }
             DispatchQueue.main.async {
                 TrackingTrace.shared.record("sensor_main", id: s.id, values: [s.time, changed ? 1 : 0])
                 self.onSample?(s)
@@ -96,14 +96,14 @@ final class LidAngleSensor {
             }
         }
         timer = t
-        setRate(hz)
+        setRate(hz, on: t)
         t.resume()
     }
 
     private var restHz = 60.0, boostHz = 200.0, boosted = false, lastChangeAt = 0.0
-    private func setRate(_ hz: Double) {
+    private func setRate(_ hz: Double, on t: DispatchSourceTimer) {
         boosted = hz == boostHz
-        timer?.schedule(deadline: .now(), repeating: 1.0 / hz, leeway: .milliseconds(hz > 100 ? 1 : 4))
+        t.schedule(deadline: .now(), repeating: 1.0 / hz, leeway: .milliseconds(hz > 100 ? 1 : 4))
     }
 
     func stop() { timer?.cancel(); timer = nil }

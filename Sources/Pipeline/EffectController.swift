@@ -61,6 +61,7 @@ final class EffectController: ObservableObject {
     private var lastRawReadingTime: Double = 0
     private var lastSnappedTime: Double = 0
     private var cadence: Double = 0.1
+    private var segmentEndT: Double = -1, segmentEndTangent: Double = 0
     private var glideTo: Double = 0          // latest reading's frame (the point the playhead is heading to)
     private var holdingBeyond = false        // extrapolated past the last reading and waiting
     private var shownFrame = -1
@@ -454,8 +455,15 @@ final class EffectController: ObservableObject {
             return 2 / (1 / s0 + 1 / s1)                       // harmonic mean keeps the curve monotone
         }
         let sBefore: Double? = i > 0 ? (a.frame - track[i - 1].frame) / max(a.t - track[i - 1].t, 0.001) : nil
-        let sAfter: Double? = i + 2 < track.count ? (track[i + 2].frame - b.frame) / max(track[i + 2].t - b.t, 0.001) : nil
-        let m0 = tangent(sBefore, slope) * h, m1 = tangent(sAfter, slope) * h
+        // The end tangent is fixed when the segment is first played, so a reading arriving mid-segment cannot move
+        // the playhead (it would otherwise jump by up to a frame).
+        let m1: Double
+        if segmentEndT == b.t { m1 = segmentEndTangent } else {
+            let sAfter: Double? = i + 2 < track.count ? (track[i + 2].frame - b.frame) / max(track[i + 2].t - b.t, 0.001) : nil
+            m1 = tangent(sAfter, slope) * h
+            segmentEndT = b.t; segmentEndTangent = m1
+        }
+        let m0 = tangent(sBefore, slope) * h
         let f2 = f * f, f3 = f2 * f
         let p = (2 * f3 - 3 * f2 + 1) * a.frame + (f3 - 2 * f2 + f) * m0 + (-2 * f3 + 3 * f2) * b.frame + (f3 - f2) * m1
         return (p, false)
@@ -633,7 +641,7 @@ final class EffectController: ObservableObject {
     /// Quit while folded: restore audio so a mute never outlives the app.
     func prepareForTermination() {
         muter.unmute()
-        mediaPauser.resume()
+        mediaPauser.resumeBlocking()
     }
 
     /// Displays changed (lid clamshell, external monitor plugged/unplugged). Drop any fold in progress; the

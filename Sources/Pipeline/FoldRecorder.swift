@@ -42,7 +42,9 @@ final class FoldRecorder {
 
     static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/FluidFold")
 
+    private var sampleBrightness = false
     func begin(now: Double, timelineFrames: Int, degreesPerFrame: Double, angle: Double) {
+        sampleBrightness = DevHooks.enabled && Self.getBrightness != nil      // an IPC per tick: diagnostics only
         if active { finish(at: now) }
         active = true
         start = now
@@ -71,7 +73,7 @@ final class FoldRecorder {
     func tick(now: Double, playhead: Double, frame: Int, target: Double) {
         guard active, ticks.count < cap else { return }
         ticks.append(Tick(t: now, playhead: playhead, frame: frame, target: target,
-                          brightness: Self.getBrightness?(CGMainDisplayID()) ?? -1))
+                          brightness: sampleBrightness ? (Self.getBrightness?(CGMainDisplayID()) ?? -1) : -1))
     }
 
     func frame(_ f: FoldRenderer.FrameTiming) {

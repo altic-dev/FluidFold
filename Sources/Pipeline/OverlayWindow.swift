@@ -108,7 +108,7 @@ final class OverlayWindow: NSWindow {
         ignoresMouseEvents = false
         metalView.requestRender()
         // A moving cursor forces the window server to composite (60 Hz, +10 ms). Hide it while folded.
-        if !cursorHidden { CGDisplayHideCursor(CGMainDisplayID()); cursorHidden = true }
+        if !cursorHidden { Self.allowCursorHidingInBackground; CGDisplayHideCursor(CGMainDisplayID()); cursorHidden = true }
         // Keyboard focus (for Esc) is taken later via `takeFocus()`, once the lid is still: taking it now makes
         // the app underneath redraw as inactive, which measurably stutters the first frames.
     }
@@ -128,4 +128,14 @@ final class OverlayWindow: NSWindow {
     }
 
     private var cursorHidden = false
+
+    /// A background app's cursor hide is ignored unless its window-server connection opts in (private but long-standing).
+    private static let allowCursorHidingInBackground: Void = {
+        typealias MainCID = @convention(c) () -> Int32
+        typealias SetProp = @convention(c) (Int32, Int32, CFString, CFTypeRef) -> Int32
+        guard let h = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_NOW),
+              let cidSym = dlsym(h, "CGSMainConnectionID"), let setSym = dlsym(h, "CGSSetConnectionProperty") else { return }
+        let cid = unsafeBitCast(cidSym, to: MainCID.self)()
+        _ = unsafeBitCast(setSym, to: SetProp.self)(cid, cid, "SetsCursorInBackground" as CFString, kCFBooleanTrue)
+    }()
 }

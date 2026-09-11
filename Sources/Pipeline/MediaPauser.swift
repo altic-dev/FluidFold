@@ -6,7 +6,7 @@ import MediaRemoteAdapter
 /// it can read the playback state, so we only pause what was playing and only resume what we paused.
 @MainActor
 final class MediaPauser {
-    private struct Snapshot: Equatable {
+    private struct Snapshot: Equatable, Sendable {
         let bundleIdentifier: String
         let processID: Int32
         let title: String?
@@ -23,11 +23,14 @@ final class MediaPauser {
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let before = await Self.query(), before.isPlaying == true else { return }
             _ = await Self.send("pause")
-            await MainActor.run {
-                guard let self, self.generation == gen else { return }
+            let stillWanted = await MainActor.run { () -> Bool in
+                guard let self, self.generation == gen else { return false }
                 self.pausedTarget = before
                 dlog("media paused: \(before.bundleIdentifier) \(before.title ?? "")")
+                return true
             }
+            // The fold ended while the pause was in flight: undo it rather than leave media stuck.
+            if !stillWanted { _ = await Self.send("play"); dlog("media pause undone (fold ended first)") }
         }
     }
 
@@ -43,13 +46,34 @@ final class MediaPauser {
         }
     }
 
+    /// Quit path: the process is about to exit, so resume synchronously.
+    func resumeBlocking() {
+        generation += 1
+        guard let target = pausedTarget else { return }
+        pausedTarget = nil
+        let sem = DispatchSemaphore(value: 0)
+        Self.queue.async {
+            if case let r = Self.run("get"), r.failure == nil, let now = Self.decode(r.output), target.matches(now), now.isPlaying == false {
+                _ = Self.run("play")
+            }
+            sem.signal()
+        }
+        _ = sem.wait(timeout: .now() + 3)
+    }
+
     // MARK: - Bridge
 
     private static let queue = DispatchQueue(label: "com.altic.FluidFold.media", qos: .userInitiated)
 
-    private static func query() async -> Snapshot? {
+    nonisolated private static func query() async -> Snapshot? {
         let result = await invoke("get")
-        guard result.failure == nil, let text = String(data: result.output, encoding: .utf8) else { return nil }
+        guard result.failure == nil else { return nil }
+        return decode(result.output)
+    }
+
+    nonisolated private static func decode(_ output: Data) -> Snapshot? {
+        guard let text = String(data: output, encoding: .utf8) else { return nil }
+        let result = HelperResult(output: output, failure: nil)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "NIL", trimmed != "null",
               let object = try? JSONSerialization.jsonObject(with: result.output) as? [String: Any],
@@ -64,19 +88,19 @@ final class MediaPauser {
         return Snapshot(bundleIdentifier: bundle, processID: pid, title: payload["title"] as? String, isPlaying: playing)
     }
 
-    private static func send(_ command: String) async -> Bool {
+    nonisolated private static func send(_ command: String) async -> Bool {
         let result = await invoke(command)
         if let failure = result.failure { dlog("media \(command) failed: \(failure)") }
         return result.failure == nil
     }
 
-    private struct HelperResult { let output: Data; let failure: String? }
+    private struct HelperResult: Sendable { let output: Data; let failure: String? }
 
-    private static func invoke(_ command: String) async -> HelperResult {
+    nonisolated private static func invoke(_ command: String) async -> HelperResult {
         await withCheckedContinuation { cont in queue.async { cont.resume(returning: run(command)) } }
     }
 
-    private static func run(_ command: String) -> HelperResult {
+    nonisolated private static func run(_ command: String) -> HelperResult {
         let framework = Bundle(for: MediaController.self)
         guard let library = framework.executablePath,
               let resourceURL = Bundle.main.url(forResource: "MediaRemoteAdapter_MediaRemoteAdapter", withExtension: "bundle"),
