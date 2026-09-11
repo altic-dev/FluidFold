@@ -107,6 +107,8 @@ final class OverlayWindow: NSWindow {
         alphaValue = 1
         ignoresMouseEvents = false
         metalView.requestRender()
+        // A moving cursor forces the window server to composite (60 Hz, +10 ms). Hide it while folded.
+        if !cursorHidden { CGDisplayHideCursor(CGMainDisplayID()); cursorHidden = true }
         // Keyboard focus (for Esc) is taken later via `takeFocus()`, once the lid is still: taking it now makes
         // the app underneath redraw as inactive, which measurably stutters the first frames.
     }
@@ -122,5 +124,8 @@ final class OverlayWindow: NSWindow {
         ignoresMouseEvents = true
         orderOut(nil)
         isPrepared = false
+        if cursorHidden { CGDisplayShowCursor(CGMainDisplayID()); cursorHidden = false }
     }
+
+    private var cursorHidden = false
 }
